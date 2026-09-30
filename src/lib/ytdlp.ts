@@ -76,12 +76,68 @@ export async function findFfmpeg(): Promise<string | undefined> {
 }
 
 export type VideoInfo = {
+  _type?: string
   title: string
   uploader?: string
+  channel?: string
   duration?: number
   webpage_url?: string
   extractor_key?: string
   formats?: RawFormat[]
+  playlist_count?: number
+  /** Playlists only — with --flat-playlist these are lightweight stubs. */
+  entries?: Array<{title?: string; duration?: number; uploader?: string; channel?: string} | null>
+}
+
+export function isPlaylist(info: VideoInfo): boolean {
+  return info._type === 'playlist' && (info.entries?.length ?? 0) > 0
+}
+
+export function playlistSize(info: VideoInfo): number {
+  return info.entries?.length ?? info.playlist_count ?? 0
+}
+
+// YouTube Music's auto-generated artist channels are "<artist> - Topic"
+const cleanArtist = (name?: string | null) => name?.replace(/\s+-\s+Topic$/i, '').trim() || undefined
+
+/**
+ * Treat a playlist as an album: the album is the playlist's title, the
+ * artist the channel behind most of the tracks (album playlists have no
+ * owner), falling back to whoever owns the playlist.
+ */
+export function playlistAlbum(info: VideoInfo): {artist?: string; album: string} {
+  const album = (info.title ?? '').replace(/^Album\s+-\s+/i, '').trim()
+
+  const counts = new Map<string, number>()
+  for (const entry of info.entries ?? []) {
+    const artist = cleanArtist(entry?.channel ?? entry?.uploader)
+    if (artist) counts.set(artist, (counts.get(artist) ?? 0) + 1)
+  }
+  const [top, topCount = 0] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? []
+  const owner = cleanArtist(info.uploader ?? info.channel)?.replace(/^by\s+/i, '')
+  // a mixed playlist has no single artist — credit its owner instead
+  const artist = top && topCount > playlistSize(info) / 2 ? top : owner
+  return {artist, album}
+}
+
+/** "<artist> - <album>" for a playlist's download folder. */
+export function playlistFolderName(info: VideoInfo): string {
+  const {artist, album} = playlistAlbum(info)
+  const name = artist && album && artist !== album ? `${artist} - ${album}` : album || artist || 'playlist'
+  return sanitizeFilename(name)
+}
+
+function sanitizeFilename(name: string): string {
+  return (
+    name
+      // path separators and characters Windows / macOS Finder refuse
+      .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^\.+|\.+$/g, '')
+      .slice(0, 100)
+      .trim() || 'playlist'
+  )
 }
 
 type RawFormat = {
@@ -105,7 +161,9 @@ export type ProbeResult = {
 
 export async function probe(ytdlp: string, url: string, signal?: AbortSignal): Promise<ProbeResult> {
   const stdout = await new Promise<string>((resolve, reject) => {
-    const child = spawn(ytdlp, ['-J', '--no-playlist', '--no-warnings', url], {signal})
+    // --flat-playlist lists a playlist's entries without extracting every
+    // video (seconds instead of minutes); single videos are unaffected
+    const child = spawn(ytdlp, ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', url], {signal})
     let out = ''
     let stderr = ''
     child.stdout.on('data', chunk => (out += chunk))
@@ -132,10 +190,69 @@ export async function probe(ytdlp: string, url: string, signal?: AbortSignal): P
   return {info, infoJsonPath}
 }
 
+export type AudioFormat = 'mp3' | 'm4a'
+export const AUDIO_FORMATS: AudioFormat[] = ['mp3', 'm4a']
+
 export type DownloadChoice = {
   label: string
   kind: 'video' | 'audio'
+  format: 'mp4' | AudioFormat
   args: string[]
+  /** Download every entry of the playlist into this folder (inside outDir). */
+  playlistFolder?: string
+}
+
+// square cover art: crop the (usually 16:9) thumbnail to its centered square —
+// YouTube Music tracks letterbox the album art, so this recovers it exactly
+const SQUARE_COVER = `ThumbnailsConvertor+FFmpeg_o:-c:v mjpeg -vf crop="'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'"`
+
+// a bracketed group made only of these words is video noise, not part of the
+// song's name: "(Official Video)", "[4K Remaster]", "(Video Oficial)", "(Letra)"
+const NOISE_WORD =
+  '(?:official|oficial|officiel|music|musical|lyrics?|letra|video|vídeo|videoclip|clip|audio|visuali[sz]er|mv|hd|hq|4k|remaster(?:ed)?|full|in|con)'
+/** Python regex (yt-dlp runs it) — a bare "(Remastered)" is the song's own version, so it stays. */
+export const TITLE_NOISE = `(?i)\\s*[\\(\\[](?!\\s*remaster(?:ed)?\\s*[\\)\\]])\\s*${NOISE_WORD}(?:\\s+${NOISE_WORD})*\\s*[\\)\\]]`
+
+// --parse-metadata reads a bare word as a field name and splits on ":" —
+// the empty %(id&|)s prefix makes the rest a literal template
+const literal = (value: string) => `%(id&|)s${value.replaceAll('%', '%%').replaceAll(':', '\\:')}`
+
+/**
+ * Music-friendly titles, for the file name and the title tag: drop the
+ * video noise, then a leading "<artist> - " when it repeats the artist.
+ * Titles that don't match are left alone.
+ */
+export function cleanTitleArgs(albumArtist?: string): string[] {
+  const args = ['--replace-in-metadata', 'title', TITLE_NOISE, '']
+  const artists = [...(albumArtist ? [literal(albumArtist)] : []), '%(artist,creator,channel,uploader)s']
+  for (const artist of artists) {
+    // the artist and the title are joined by a newline, which neither contains;
+    // the backreference only matches when the title starts with that artist
+    args.push(
+      '--parse-metadata',
+      `${artist}\n%(title)s:(?i)^(?P<yoinks_artist>[^\n]+)\n(?P=yoinks_artist)\\s+[-–—]\\s+(?P<title>.+)$`,
+    )
+  }
+  return args
+}
+
+function audioArgs(format: AudioFormat, albumArtist?: string): string[] {
+  return [
+    // m4a is YouTube's own AAC stream, so it's kept as-is instead of re-encoded
+    ...(format === 'm4a' ? ['-f', 'ba[ext=m4a]/ba/b'] : ['-f', 'ba/b']),
+    '-x',
+    '--audio-format',
+    format,
+    '--audio-quality',
+    '0',
+    '--embed-thumbnail',
+    '--convert-thumbnails',
+    'jpg',
+    '--ppa',
+    SQUARE_COVER,
+    '--embed-metadata',
+    ...cleanTitleArgs(albumArtist),
+  ]
 }
 
 const MAX_VIDEO_CHOICES = 8
@@ -145,8 +262,11 @@ export function buildChoices(info: VideoInfo): DownloadChoice[] {
   const choices: DownloadChoice[] = []
 
   const audioOnly = formats.filter(f => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none'))
-  const bestAudio = [...audioOnly].sort((a, b) => (b.abr ?? b.tbr ?? 0) - (a.abr ?? a.tbr ?? 0))[0]
+  const byBitrate = (a: RawFormat, b: RawFormat) => (b.abr ?? b.tbr ?? 0) - (a.abr ?? a.tbr ?? 0)
+  const bestAudio = [...audioOnly].sort(byBitrate)[0]
   const audioSize = bestAudio?.filesize ?? bestAudio?.filesize_approx
+  const bestM4a = audioOnly.filter(f => f.ext === 'm4a').sort(byBitrate)[0]
+  const m4aSize = bestM4a?.filesize ?? bestM4a?.filesize_approx ?? audioSize
 
   const videos = formats.filter(f => f.vcodec && f.vcodec !== 'none' && f.height)
   const heights = [...new Set(videos.map(f => f.height as number))].sort((a, b) => b - a)
@@ -159,6 +279,7 @@ export function buildChoices(info: VideoInfo): DownloadChoice[] {
     const sizeLabel = size > 0 ? ` · ~${formatBytes(size)}` : ''
     choices.push({
       kind: 'video',
+      format: 'mp4',
       label: `${height}p · mp4${sizeLabel}`,
       args: [
         '-f',
@@ -172,19 +293,60 @@ export function buildChoices(info: VideoInfo): DownloadChoice[] {
   if (choices.length === 0) {
     choices.push({
       kind: 'video',
+      format: 'mp4',
       label: 'best available · mp4',
       args: ['-f', 'bv*+ba/b', '--merge-output-format', 'mp4'],
     })
   }
 
-  const audioSizeLabel = audioSize ? ` · ~${formatBytes(audioSize)}` : ''
-  choices.push({
-    kind: 'audio',
-    label: `audio only · mp3${audioSizeLabel}`,
-    args: ['-f', 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '0'],
-  })
+  const sizeLabel = (size?: number) => (size ? ` · ~${formatBytes(size)}` : '')
+  choices.push(
+    {kind: 'audio', format: 'mp3', label: `audio only · mp3${sizeLabel(audioSize)}`, args: audioArgs('mp3')},
+    {kind: 'audio', format: 'm4a', label: `audio only · m4a${sizeLabel(m4aSize)}`, args: audioArgs('m4a')},
+  )
 
   return choices
+}
+
+/**
+ * Tag every track as part of the same album (album, album artist, track
+ * number), so music players group the folder as one record.
+ */
+export function albumTagArgs({artist, album}: {artist?: string; album: string}): string[] {
+  const args = ['--parse-metadata', 'playlist_index:%(meta_track)s']
+  if (album) args.push('--parse-metadata', `${literal(album)}:%(meta_album)s`)
+  if (artist) args.push('--parse-metadata', `${literal(artist)}:%(meta_album_artist)s`)
+  return args
+}
+
+export function buildPlaylistChoices(info: VideoInfo): DownloadChoice[] {
+  const count = playlistSize(info)
+  const playlistFolder = playlistFolderName(info)
+  const album = playlistAlbum(info)
+  return [
+    ...AUDIO_FORMATS.map(
+      (format): DownloadChoice => ({
+        kind: 'audio',
+        format,
+        playlistFolder,
+        label: `all ${count} tracks · ${format}`,
+        args: [...audioArgs(format, album.artist), ...albumTagArgs(album)],
+      }),
+    ),
+    {
+      kind: 'video',
+      format: 'mp4',
+      playlistFolder,
+      label: `all ${count} videos · mp4`,
+      args: ['-f', 'bv*+ba/b', '--merge-output-format', 'mp4'],
+    },
+  ]
+}
+
+/** The choice a --mp3 / --m4a / --best flag stands for. */
+export function presetChoiceIndex(choices: DownloadChoice[], preset: AudioFormat | 'best'): number {
+  // video choices are listed best-first
+  return preset === 'best' ? choices.findIndex(c => c.kind === 'video') : choices.findIndex(c => c.format === preset)
 }
 
 function scoreVideo(f: RawFormat): number {
@@ -207,6 +369,17 @@ export type DownloadProgress = {
 export type DownloadHandlers = {
   onProgress: (progress: DownloadProgress) => void
   onProcessing: () => void
+  /** Playlists only: a new entry started (1-based). */
+  onItem?: (item: number, totalItems: number) => void
+}
+
+export type DownloadResult = {
+  /** The file — or, for playlists, the folder the files were saved into. */
+  filepath: string
+  /** Files saved (1 for single downloads). */
+  count: number
+  /** Playlist entries that couldn't be downloaded (private, removed, …). */
+  failed: number
 }
 
 const PROGRESS_PREFIX = 'YOINK|'
@@ -227,11 +400,14 @@ export function download(
   },
   handlers: DownloadHandlers,
   signal?: AbortSignal,
-): Promise<string> {
+): Promise<DownloadResult> {
+  const {playlistFolder} = opts.choice
+  const playlist = playlistFolder !== undefined
   const args = [
-    ...(opts.infoJsonPath ? ['--load-info-json', opts.infoJsonPath] : [opts.url]),
+    ...(opts.infoJsonPath && !playlist ? ['--load-info-json', opts.infoJsonPath] : [opts.url]),
     ...opts.choice.args,
-    '--no-playlist',
+    // one unavailable video shouldn't sink the whole playlist
+    ...(playlist ? ['--yes-playlist', '--ignore-errors'] : ['--no-playlist']),
     '--no-warnings',
     '--newline',
     // --print implies --quiet, which suppresses progress bars and the
@@ -244,7 +420,10 @@ export function download(
     'after_move:filepath',
     '--no-simulate',
     '-o',
-    path.join(opts.outDir, '%(title).60s.%(ext)s'),
+    playlist
+      ? // the folder is literal text inside yt-dlp's template, so escape its %
+        path.join(opts.outDir.replaceAll('%', '%%'), playlistFolder.replaceAll('%', '%%'), '%(playlist_index)02d - %(title).60s.%(ext)s')
+      : path.join(opts.outDir, '%(title).60s.%(ext)s'),
   ]
   if (opts.ffmpegLocation) args.push('--ffmpeg-location', opts.ffmpegLocation)
 
@@ -253,13 +432,15 @@ export function download(
     activeChild = child
 
     let stderr = ''
-    let filepath = ''
+    const filepaths: string[] = []
+    let totalItems = 0
     let part = 0
     let totalParts = 1
     let lastDownloaded = 0
     let buffer = ''
-    // every file yt-dlp writes this run, so a cancel can clean up after itself
-    const destinations: string[] = []
+    // every file yt-dlp writes for the current item, so a cancel can clean
+    // up after itself without touching playlist tracks that already finished
+    let destinations: string[] = []
 
     child.stdout.on('data', (chunk: Buffer) => {
       buffer += chunk.toString()
@@ -281,6 +462,17 @@ export function download(
             part,
             totalParts,
           })
+        } else if (/^\[download\] Downloading item \d+ of \d+$/.test(line)) {
+          const [item, total] = line.match(/\d+/g)!.map(Number) as [number, number]
+          totalItems = total
+          part = 0
+          totalParts = 1
+          lastDownloaded = 0
+          destinations = []
+          handlers.onItem?.(item, total)
+        } else if (line.startsWith('[info] Writing video thumbnail ')) {
+          const thumbnail = / to: (.+)$/.exec(line)?.[1]
+          if (thumbnail) destinations.push(thumbnail, thumbnail.replace(/\.[^./]+$/, '.jpg'))
         } else if (line.includes('Downloading 1 format(s):')) {
           // "[info] xxx: Downloading 1 format(s): 395+251" — each id is one file
           totalParts = (line.split('format(s):')[1] ?? '').trim().split('+').length
@@ -293,7 +485,8 @@ export function download(
         } else if (line.startsWith('[download] Destination: ')) {
           destinations.push(line.slice('[download] Destination: '.length))
         } else if (path.isAbsolute(line)) {
-          filepath = line
+          filepaths.push(line)
+          destinations = []
         }
       }
     })
@@ -307,8 +500,16 @@ export function download(
         reject(new Error('Download cancelled.'))
         return
       }
-      if (code === 0 && filepath) {
-        resolve(filepath)
+      const filepath = filepaths.at(-1)
+      if (playlist && filepath) {
+        // --ignore-errors exits non-zero when any entry failed — still a win
+        resolve({
+          filepath: path.dirname(filepath),
+          count: filepaths.length,
+          failed: Math.max(0, totalItems - filepaths.length),
+        })
+      } else if (code === 0 && filepath) {
+        resolve({filepath, count: 1, failed: 0})
       } else {
         reject(new Error(cleanYtDlpError(stderr) || `Download failed (yt-dlp exit code ${code}).`))
       }

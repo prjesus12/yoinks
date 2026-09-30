@@ -1,12 +1,20 @@
 import {isThemeMode, type ThemeMode} from '../theme.js'
 
+export type Preset = 'mp3' | 'm4a' | 'best'
+
 export type CliArgs = {
   help: boolean
   version: boolean
   initialUrl?: string
   themeMode?: ThemeMode
+  /** Skip the format picker and download this straight away. */
+  preset?: Preset
+  /** Where downloads go, as typed — resolved by the caller. */
+  outDir?: string
   error?: string
 }
+
+const PRESET_FLAGS: Record<string, Preset> = {'--mp3': 'mp3', '--m4a': 'm4a', '--best': 'best'}
 
 export function parseArgs(args: string[]): CliArgs {
   const result: CliArgs = {help: false, version: false}
@@ -27,6 +35,20 @@ export function parseArgs(args: string[]): CliArgs {
       const value = arg.slice('--theme='.length)
       if (!isThemeMode(value)) return {...result, error: `unknown theme “${value}” — use auto, light, or dark`}
       result.themeMode = value
+    } else if (arg in PRESET_FLAGS) {
+      const preset = PRESET_FLAGS[arg]!
+      if (result.preset && result.preset !== preset) {
+        return {...result, error: 'pick one of --mp3, --m4a, or --best'}
+      }
+      result.preset = preset
+    } else if (arg === '-o' || arg === '--out') {
+      const value = args[++index]
+      if (!value) return {...result, error: `${arg} needs a folder`}
+      result.outDir = value
+    } else if (arg.startsWith('--out=')) {
+      const value = arg.slice('--out='.length)
+      if (!value) return {...result, error: '--out needs a folder'}
+      result.outDir = value
     } else if (arg.startsWith('-')) {
       return {...result, error: `unknown option “${arg}”`}
     } else {

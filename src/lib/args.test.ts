@@ -28,6 +28,25 @@ test('rejects missing, invalid, and unknown options', () => {
   assert.match(parseArgs(['one', 'two']).error ?? '', /single url/)
 })
 
+test('parses download presets and an output folder', () => {
+  assert.deepEqual(parseArgs(['--mp3', '-o', '~/Music', 'https://example.com/list']), {
+    help: false,
+    version: false,
+    preset: 'mp3',
+    outDir: '~/Music',
+    initialUrl: 'https://example.com/list',
+  })
+  assert.equal(parseArgs(['--m4a']).preset, 'm4a')
+  assert.equal(parseArgs(['--best', '--out=videos']).outDir, 'videos')
+  assert.equal(parseArgs(['--mp3', '--mp3']).preset, 'mp3')
+})
+
+test('rejects conflicting presets and a missing output folder', () => {
+  assert.match(parseArgs(['--mp3', '--best']).error ?? '', /pick one/)
+  assert.match(parseArgs(['--out']).error ?? '', /needs a folder/)
+  assert.match(parseArgs(['--out=']).error ?? '', /needs a folder/)
+})
+
 test('recognizes only supported modes and cycles through all of them', () => {
   assert.equal(isThemeMode('auto'), true)
   assert.equal(isThemeMode('light'), true)

@@ -1,5 +1,7 @@
 import React from 'react'
 import {createRequire} from 'node:module'
+import os from 'node:os'
+import path from 'node:path'
 import {render} from 'ink'
 import {App, type Outcome} from './app.js'
 import {captureFrames} from './lib/click-map.js'
@@ -15,19 +17,27 @@ const HELP = `
   yoinks — yoink any video. paste. yoink. done.
 
   Usage
-    $ yoinks [url]
+    $ yoinks [options] [url]
 
   Examples
     $ yoinks https://youtu.be/dQw4w9WgXcQ
     $ yoinks https://x.com/user/status/123456
+    $ yoinks --mp3 https://youtube.com/playlist?list=…   (every track, no questions)
+    $ yoinks --m4a -o ~/Music https://youtu.be/dQw4w9WgXcQ
     $ yoinks                 (prompts for a url)
 
   Options
+    --mp3           skip the picker: audio as mp3
+    --m4a           skip the picker: audio as m4a (AAC, no re-encoding)
+    --best          skip the picker: highest-resolution mp4
+    -o, --out <dir> save here instead of ~/Downloads
     --theme <mode>  use auto, light, or dark for this run
     -h, --help      show this help
     -v, --version   show version
 
-  Downloads are saved to ~/Downloads.
+  With a url and --mp3, --m4a or --best, yoinks downloads, prints the
+  path and exits — handy in scripts. Playlists go in an "Artist - Album"
+  folder; audio comes with square cover art and clean title/artist tags.
   Powered by yt-dlp — YouTube, X, Instagram, Threads, TikTok & 1800+ sites.
 `
 
@@ -50,6 +60,8 @@ if (args.version) {
 
 const initialUrl = args.initialUrl
 const initialThemeMode = args.themeMode ?? 'auto'
+const expandHome = (dir: string) => (dir === '~' || dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(1)) : dir)
+const outDir = args.outDir ? path.resolve(expandHome(args.outDir)) : undefined
 
 const isTTY = Boolean(process.stdout.isTTY)
 
@@ -85,6 +97,8 @@ const {waitUntilExit} = render(
     initialUrl={initialUrl}
     clipboardUrl={clipboardUrl}
     initialThemeMode={initialThemeMode}
+    preset={args.preset}
+    outDir={outDir}
     onOutcome={result => (outcome = result)}
   />,
   // keep a copy of every frame so clicks can be hit-tested against it
@@ -96,4 +110,7 @@ await waitUntilExit()
 if (isTTY) leaveAltScreen()
 if (outcome.filepath) {
   console.log(`✓ yoinked → ${outcome.filepath}`)
+} else if (outcome.error) {
+  console.error(`yoinks: ${outcome.error}`)
+  process.exitCode = 1
 }

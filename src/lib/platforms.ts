@@ -40,3 +40,22 @@ export function isProbablyUrl(input: string): boolean {
     return false
   }
 }
+
+/**
+ * A YouTube watch link that also carries a playlist (`watch?v=…&list=…`)
+ * resolves to the single video; this returns the link to the whole playlist
+ * so it can be offered as well. Mixes (RD…) are endless auto-generated
+ * radios, not real playlists, so they're left out.
+ */
+export function playlistUrlFor(url: string): string | undefined {
+  let u: URL
+  try {
+    u = new URL(url)
+  } catch {
+    return undefined
+  }
+  if (detectPlatform(url).key !== 'youtube') return undefined
+  const list = u.searchParams.get('list')
+  if (!list || list.startsWith('RD') || u.pathname === '/playlist') return undefined
+  return `https://www.youtube.com/playlist?list=${encodeURIComponent(list)}`
+}

@@ -14,24 +14,32 @@ import {TextInput} from './components/text-input.js'
 import {clickTargetAt, findFrameRow, frameRowSpan, type ClickTarget} from './lib/click-map.js'
 import {formatBytes, formatDuration, formatEta, formatSpeed, shortenPath, truncate, wrapText} from './lib/format.js'
 import {addToHistory, loadHistory} from './lib/history.js'
-import {detectPlatform, isProbablyUrl, type Platform} from './lib/platforms.js'
+import type {Preset} from './lib/args.js'
+import {detectPlatform, isProbablyUrl, playlistUrlFor, type Platform} from './lib/platforms.js'
 import {useMouseClick} from './lib/use-mouse-click.js'
 import {nextThemeMode, ThemeProvider, type ThemeMode, useTheme} from './theme.js'
 import {
   buildChoices,
+  buildPlaylistChoices,
   download,
   ensureYtDlp,
   findFfmpeg,
+  isPlaylist,
+  playlistSize,
+  presetChoiceIndex,
   probe,
   type DownloadChoice,
   type DownloadProgress,
+  type DownloadResult,
   type VideoInfo,
 } from './lib/ytdlp.js'
 
-const OUT_DIR = path.join(os.homedir(), 'Downloads')
+export const DEFAULT_OUT_DIR = path.join(os.homedir(), 'Downloads')
 const YOINK_BUTTON = 'yoink'
 const DONE_LABEL = '↵ yoink another'
 const TAGLINE = 'yoink any video. paste. yoink. done.'
+const WHOLE_PLAYLIST = -1 // picker value for "grab the playlist this video is in"
+const WHOLE_PLAYLIST_LABEL = '☰ whole playlist →'
 
 const choiceLabel = (choice: DownloadChoice) => `${choice.kind === 'audio' ? '♪ ' : '▶ '}${choice.label}`
 
@@ -64,26 +72,40 @@ const Gap = ({lines = 1}: {lines?: number}) => (
   </Box>
 )
 
+type PlaylistItem = {item: number; totalItems: number}
+
 // fixed-width slots — the centered line must not change width as values tick,
 // otherwise the whole layout shifts on every progress update
+function trackLabel(track?: PlaylistItem): string {
+  if (!track) return ''
+  const total = String(track.totalItems)
+  return `track ${String(track.item).padStart(total.length)}/${total}  `
+}
+
 function partLabel(progress: DownloadProgress): string {
   // explains the bar resetting between files (video, then audio)
   return progress.totalParts > 1 ? `part ${progress.part + 1}/${progress.totalParts}  ` : ''
 }
 
-function downloadMeta(progress: DownloadProgress): string {
+function downloadMeta(progress: DownloadProgress, track?: PlaylistItem): string {
   const speed = progress.speed ? formatSpeed(progress.speed) : ''
   const eta = progress.eta ? `${formatEta(progress.eta)} left` : ''
-  return `${partLabel(progress)}${speed.padStart(10)}  ${eta.padEnd(12)}`
+  return `${trackLabel(track)}${partLabel(progress)}${speed.padStart(10)}  ${eta.padEnd(12)}`
 }
 
-function indeterminateMeta(progress: DownloadProgress): string {
+function indeterminateMeta(progress: DownloadProgress, track?: PlaylistItem): string {
   const bytes = formatBytes(progress.downloadedBytes)
   const speed = progress.speed ? formatSpeed(progress.speed) : ''
-  return `${partLabel(progress)}${bytes.padStart(8)}  ${speed.padEnd(10)}`
+  return `${trackLabel(track)}${partLabel(progress)}${bytes.padStart(8)}  ${speed.padEnd(10)}`
 }
 
-export type Outcome = {filepath?: string}
+function totalDuration(info: VideoInfo): number | undefined {
+  const durations = (info.entries ?? []).map(entry => entry?.duration)
+  if (durations.length === 0 || durations.some(d => !d)) return undefined
+  return durations.reduce((sum: number, d) => sum + d!, 0)
+}
+
+export type Outcome = {filepath?: string; error?: string}
 
 type Phase =
   | {name: 'input'; warning?: string}
@@ -95,8 +117,9 @@ type Phase =
       progress?: DownloadProgress
       processing: boolean
       refreshing?: boolean
+      track?: PlaylistItem
     }
-  | {name: 'done'; filepath: string}
+  | {name: 'done'; result: DownloadResult; playlist: boolean}
   | {name: 'error'; message: string}
 
 const HINTS: Record<Phase['name'], Array<[string, string]>> = {
@@ -129,6 +152,9 @@ type AppProps = {
   initialUrl?: string
   clipboardUrl?: string
   initialThemeMode?: ThemeMode
+  /** Skip the picker and download this choice as soon as the link is read. */
+  preset?: Preset
+  outDir?: string
   onOutcome: (outcome: Outcome) => void
 }
 
@@ -148,14 +174,11 @@ export function App({initialThemeMode = 'auto', ...props}: AppProps) {
 function AppContent({
   initialUrl,
   clipboardUrl,
+  preset,
+  outDir = DEFAULT_OUT_DIR,
   onOutcome,
   cycleTheme,
-}: {
-  initialUrl?: string
-  clipboardUrl?: string
-  onOutcome: (outcome: Outcome) => void
-  cycleTheme: () => void
-}) {
+}: Omit<AppProps, 'initialThemeMode'> & {cycleTheme: () => void}) {
   const theme = useTheme()
   const {exit} = useApp()
   const {stdout} = useStdout()
@@ -170,6 +193,8 @@ function AppContent({
   const infoJsonRef = useRef<string | undefined>(undefined)
   const abortRef = useRef<AbortController | undefined>(undefined)
   const [phase, setPhase] = useState<Phase>(initialUrl ? {name: 'probing', status: 'warming up…'} : {name: 'input'})
+  // `yoinks --mp3 <url>` is a one-shot command: download, print, exit
+  const oneShot = Boolean(preset && initialUrl)
 
   const columns = stdout?.columns && stdout.columns > 0 ? stdout.columns : 80
   const boxWidth = Math.max(14, Math.min(64, columns - 6))
@@ -191,12 +216,13 @@ function AppContent({
       if (controller.signal.aborted) return
       infoJsonRef.current = infoJsonPath
       setInfo(videoInfo)
-      setChoices(buildChoices(videoInfo))
+      setChoices(isPlaylist(videoInfo) ? buildPlaylistChoices(videoInfo) : buildChoices(videoInfo))
       highlightRef.current = 0
       setPhase({name: 'picking'})
     } catch (error) {
       if (controller.signal.aborted) return
-      setPhase({name: 'error', message: error instanceof Error ? error.message : String(error)})
+      // fail() only reads props, so this first-render copy never goes stale
+      fail(error instanceof Error ? error.message : String(error))
     }
   }, [])
 
@@ -245,7 +271,17 @@ function AppContent({
   const clipboardOffered = Boolean(clipboardUrl) && urlInput === ''
   const clipboardAccepted = Boolean(clipboardUrl) && urlInput === clipboardUrl
 
+  const playlistUrl = info && !isPlaylist(info) ? playlistUrlFor(url) : undefined
+  const pickerItems = choices.map((choice, index) => ({key: String(index), label: choiceLabel(choice), value: index}))
+  if (playlistUrl) pickerItems.push({key: 'playlist', label: WHOLE_PLAYLIST_LABEL, value: WHOLE_PLAYLIST})
+
   const handlePick = (item: {value: number}) => {
+    if (item.value === WHOLE_PLAYLIST) {
+      if (!playlistUrl) return
+      setUrl(playlistUrl)
+      void startProbe(playlistUrl)
+      return
+    }
     const choice = choices[item.value]
     const controller = new AbortController()
     abortRef.current = controller
@@ -256,31 +292,61 @@ function AppContent({
           setPhase(prev => (prev.name === 'downloading' ? {...prev, progress, processing: false} : prev)),
         onProcessing: () =>
           setPhase(prev => (prev.name === 'downloading' ? {...prev, processing: true} : prev)),
+        onItem: (item: number, totalItems: number) =>
+          setPhase(prev =>
+            prev.name === 'downloading'
+              ? {...prev, progress: undefined, processing: false, track: {item, totalItems}}
+              : prev,
+          ),
       }
       try {
         const ffmpegLocation = await findFfmpeg()
-        const base = {ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir: OUT_DIR}
-        let filepath: string
+        const base = {ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir}
+        let result: DownloadResult
         try {
           // reuse the probe's metadata — starts immediately instead of re-extracting
-          filepath = await download({...base, infoJsonPath: infoJsonRef.current}, handlers, controller.signal)
+          result = await download({...base, infoJsonPath: infoJsonRef.current}, handlers, controller.signal)
         } catch (error) {
-          if (controller.signal.aborted) throw error
+          // playlists always extract fresh, so there's nothing stale to retry
+          if (controller.signal.aborted || choice.playlistFolder) throw error
           // media urls in the cached info can expire — retry with a fresh extraction
           setPhase(prev =>
             prev.name === 'downloading' ? {...prev, progress: undefined, refreshing: true} : prev,
           )
-          filepath = await download(base, handlers, controller.signal)
+          result = await download(base, handlers, controller.signal)
         }
-        onOutcome({filepath})
+        onOutcome({filepath: result.filepath})
         setHistory(addToHistory(url))
-        setPhase({name: 'done', filepath})
+        if (oneShot) {
+          exit()
+          return
+        }
+        setPhase({name: 'done', result, playlist: Boolean(choice.playlistFolder)})
       } catch (error) {
         if (controller.signal.aborted) return
-        setPhase({name: 'error', message: error instanceof Error ? error.message : String(error)})
+        fail(error instanceof Error ? error.message : String(error))
       }
     })()
   }
+
+  const fail = (message: string) => {
+    if (oneShot) {
+      onOutcome({error: message})
+      exit()
+      return
+    }
+    setPhase({name: 'error', message})
+  }
+
+  // with a preset flag, the picker is skipped: pick for the user once the
+  // link has been read (on every link — the flag holds for the whole session)
+  useEffect(() => {
+    if (phase.name !== 'picking' || !preset) return
+    const index = presetChoiceIndex(choices, preset)
+    if (index >= 0) handlePick({value: index})
+    else fail(`nothing to download as ${preset === 'best' ? 'video' : preset} here`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per picker
+  }, [phase.name])
 
   let hints: Array<[string, string]> = [...HINTS[phase.name], ['^t', `theme:${theme.mode}`]]
   if (phase.name === 'input' && history.length > 0) {
@@ -307,8 +373,8 @@ function AppContent({
     clickTargets.push({match: `  ${YOINK_BUTTON}  `, padY: 1, action: () => handleUrlSubmit(urlInput)})
   }
   if (phase.name === 'picking') {
-    for (const [index, choice] of choices.entries()) {
-      clickTargets.push({match: choiceLabel(choice), action: () => handlePick({value: index})})
+    for (const item of pickerItems) {
+      clickTargets.push({match: item.label, action: () => handlePick(item)})
     }
   }
   if (phase.name === 'done') {
@@ -389,22 +455,28 @@ function AppContent({
               </Text>
             ))}
             <Gap />
-            <Text color={theme.gray} dimColor={theme.dimSecondary}>
-              ▸ {platform.label}
-              {info?.duration ? ` · ${formatDuration(info.duration)}` : ''}
-              {info?.uploader ? ` · ${info.uploader}` : ''}
-            </Text>
+            {info && isPlaylist(info) ? (
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>
+                ☰ {platform.label} playlist · {playlistSize(info)} videos
+                {totalDuration(info) ? ` · ${formatDuration(totalDuration(info)!)}` : ''}
+                {info.uploader ?? info.channel ? ` · ${info.uploader ?? info.channel}` : ''}
+              </Text>
+            ) : (
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>
+                ▸ {platform.label}
+                {info?.duration ? ` · ${formatDuration(info.duration)}` : ''}
+                {info?.uploader ? ` · ${info.uploader}` : ''}
+              </Text>
+            )}
           </Box>
           <Panel title="Download" width={38}>
             <SelectInput
               indicatorComponent={ChoiceIndicator}
               itemComponent={ChoiceItem}
-              items={choices.map((choice, index) => ({
-                key: String(index),
-                label: choiceLabel(choice),
-                value: index,
-              }))}
+              items={pickerItems}
               onSelect={handlePick}
+              // no keyboard to read when piped / scripted; a preset picks on its own
+              isFocused={Boolean(process.stdin.isTTY) && !preset}
               onHighlight={item => (highlightRef.current = item.value)}
             />
           </Panel>
@@ -427,14 +499,14 @@ function AppContent({
                 <Text color={theme.primary}>
                   <Spinner type="dots" />
                 </Text>
-                <Text color={theme.gray} dimColor={theme.dimSecondary}> processing…</Text>
+                <Text color={theme.gray} dimColor={theme.dimSecondary}> {trackLabel(phase.track)}processing…</Text>
               </Text>
             </>
           ) : phase.progress?.totalBytes ? (
             <>
               <ProgressBar percent={phase.progress.downloadedBytes / phase.progress.totalBytes} />
               <Gap />
-              <Text color={theme.gray} dimColor={theme.dimSecondary}>{downloadMeta(phase.progress)}</Text>
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>{downloadMeta(phase.progress, phase.track)}</Text>
             </>
           ) : phase.progress ? (
             <>
@@ -445,7 +517,7 @@ function AppContent({
                 <Text color={theme.gray} dimColor={theme.dimSecondary}> downloading…</Text>
               </Text>
               <Gap />
-              <Text color={theme.gray} dimColor={theme.dimSecondary}>{indeterminateMeta(phase.progress)}</Text>
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>{indeterminateMeta(phase.progress, phase.track)}</Text>
             </>
           ) : (
             <>
@@ -456,7 +528,13 @@ function AppContent({
                   <Spinner type="dots" />
                 </Text>
                 <Text color={theme.gray} dimColor={theme.dimSecondary}>
-                  {phase.refreshing ? ' link expired — grabbing a fresh one…' : ' starting download…'}
+                  {phase.refreshing
+                    ? ' link expired — grabbing a fresh one…'
+                    : phase.track
+                      ? ` ${trackLabel(phase.track)}starting…`
+                      : phase.choice.playlistFolder
+                        ? ' loading playlist…'
+                        : ' starting download…'}
                 </Text>
               </Text>
             </>
@@ -467,10 +545,17 @@ function AppContent({
       {phase.name === 'done' && (
         <Box flexDirection="column" alignItems="center">
           <Text>
-            <Text bold color={theme.primary}>✓ yoinked! </Text>
-            <Text color={theme.primary}>find your file in:</Text>
+            <Text bold color={theme.primary}>
+              {phase.playlist ? `✓ yoinked ${phase.result.count} ${phase.result.count === 1 ? 'file' : 'files'}! ` : '✓ yoinked! '}
+            </Text>
+            <Text color={theme.primary}>{phase.playlist ? 'find them in:' : 'find your file in:'}</Text>
           </Text>
-          <Text color={theme.gray} dimColor={theme.dimSecondary}>{shortenPath(phase.filepath, os.homedir(), 60)}</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>{shortenPath(phase.result.filepath, os.homedir(), 60)}</Text>
+          {phase.result.failed > 0 ? (
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>
+              {phase.result.failed} unavailable {phase.result.failed === 1 ? 'video' : 'videos'} skipped
+            </Text>
+          ) : null}
           <Gap />
           <Box
             borderStyle="round"

@@ -35,7 +35,14 @@ automatically.
 $ yoinks https://youtu.be/dQw4w9WgXcQ    # straight to the format picker
 $ yoinks                                 # prompts for a url
 $ yoinks --theme light                   # force the light palette
+$ yoinks --mp3 <playlist-url>            # every track as mp3, no questions
+$ yoinks --m4a -o ~/Music <url>          # m4a, saved to ~/Music
+$ yoinks --best <url>                    # highest-resolution mp4
 ```
+
+With a url plus `--mp3`, `--m4a` or `--best`, yoinks skips the format
+picker, downloads, prints the path and exits (with a non-zero exit code on
+failure) — so it works in scripts too. `-o` / `--out` picks the folder.
 
 yoinks takes over the terminal (full-screen, centered — and restores your
 scrollback on exit). Pick a format with ↑/↓ (or j/k, or number keys) and
@@ -43,6 +50,25 @@ hit enter. `esc` goes back, `^c` quits. Or just use the mouse — the yoink
 button, the format list and the footer hints are all clickable, and
 clicking the logo takes you back home. Files are saved to `~/Downloads`,
 and the file path is printed to your terminal when you're done.
+
+Paste a playlist link to yoink the whole thing — every track as an mp3 or
+m4a, or every video as an mp4 — into its own `Artist - Album` folder in
+`~/Downloads` (the artist is the channel behind most tracks, or the
+playlist's owner for mixed playlists), numbered in playlist order. Unavailable videos are skipped instead of stopping the run.
+Pasting a `watch?v=…&list=…` link offers the whole playlist as an extra
+option under the video's own formats.
+
+Audio comes as mp3 or m4a (YouTube's own AAC stream, kept as-is instead of
+re-encoded — smaller and a touch better). Either way it gets the video's
+thumbnail embedded as square cover art (cropped from the center, which
+recovers the album art on YouTube Music tracks), plus title and artist tags.
+Titles are cleaned up for music: `Rick Astley - Never Gonna Give You Up
+(Official Video) (4K Remaster)` becomes `Never Gonna Give You Up` — video
+noise like `(Official Video)`, `[Lyrics]` or `(Video Oficial)` is dropped, and
+so is a leading artist name that repeats the channel. Things that are part of
+the song, like `(Live in …)`, `(feat. …)` or `(Remastered 2009)`, stay.
+Playlist audio is also tagged with the same album, album artist
+and track number, so music players group the folder as one record.
 
 The default `auto` theme uses your terminal's own foreground and background,
 so it follows light and dark terminal themes without guessing. Press `^t` or
@@ -77,9 +103,9 @@ To try it as a global command without publishing: `npm link`, then run
 
 ## Roadmap
 
-- [ ] `--best` / `--mp3` flags to skip the picker (scriptable mode)
-- [ ] `-o <dir>` to choose the output folder
-- [ ] Playlist / thread-with-multiple-videos support
+- [x] `--best` / `--mp3` flags to skip the picker (scriptable mode)
+- [x] `-o <dir>` to choose the output folder
+- [x] Playlist / thread-with-multiple-videos support
 - [ ] Clipboard detection: launch bare and auto-suggest the url you copied
 - [ ] Self-update for the bundled yt-dlp binary (`yt-dlp -U`)
 - [x] Publish to npm (`npm i -g yoinks` / `npx yoinks`)
