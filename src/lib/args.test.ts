@@ -47,6 +47,20 @@ test('rejects conflicting presets and a missing output folder', () => {
   assert.match(parseArgs(['--out=']).error ?? '', /needs a folder/)
 })
 
+test('parses the web server options', () => {
+  assert.deepEqual(parseArgs(['--web', '--port', '8080', '--no-open']), {
+    help: false,
+    version: false,
+    web: true,
+    port: 8080,
+    noOpen: true,
+    initialUrl: undefined,
+  })
+  assert.equal(parseArgs(['--web', '--port=3000']).port, 3000)
+  assert.match(parseArgs(['--port', 'abc']).error ?? '', /--port needs/)
+  assert.match(parseArgs(['--port=70000']).error ?? '', /--port needs/)
+})
+
 test('recognizes only supported modes and cycles through all of them', () => {
   assert.equal(isThemeMode('auto'), true)
   assert.equal(isThemeMode('light'), true)

@@ -11,6 +11,11 @@ export type CliArgs = {
   preset?: Preset
   /** Where downloads go, as typed — resolved by the caller. */
   outDir?: string
+  /** Serve the web app instead of the terminal UI. */
+  web?: boolean
+  port?: number
+  /** Don't open a browser tab for --web. */
+  noOpen?: boolean
   error?: string
 }
 
@@ -49,6 +54,17 @@ export function parseArgs(args: string[]): CliArgs {
       const value = arg.slice('--out='.length)
       if (!value) return {...result, error: '--out needs a folder'}
       result.outDir = value
+    } else if (arg === '--web') {
+      result.web = true
+    } else if (arg === '--no-open') {
+      result.noOpen = true
+    } else if (arg === '--port' || arg.startsWith('--port=')) {
+      const value = arg === '--port' ? args[++index] : arg.slice('--port='.length)
+      const port = Number(value)
+      if (!value || !Number.isInteger(port) || port < 1 || port > 65535) {
+        return {...result, error: '--port needs a number between 1 and 65535'}
+      }
+      result.port = port
     } else if (arg.startsWith('-')) {
       return {...result, error: `unknown option “${arg}”`}
     } else {

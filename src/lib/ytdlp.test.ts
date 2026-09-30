@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {albumTagArgs, buildChoices, buildPlaylistChoices, playlistFolderName, presetChoiceIndex, TITLE_NOISE, type VideoInfo} from './ytdlp.js'
+import {albumTagArgs, buildChoices, cleanTitle, buildPlaylistChoices, playlistFolderName, presetChoiceIndex, TITLE_NOISE, type VideoInfo} from './ytdlp.js'
 
 const playlist = (title: string, channels: string[], owner?: string): VideoInfo => ({
   _type: 'playlist',
@@ -72,4 +72,11 @@ test('maps presets to their choice', () => {
   const list = buildPlaylistChoices(playlist('Discovery', ['Daft Punk', 'Daft Punk']))
   assert.equal(list[presetChoiceIndex(list, 'm4a')]!.label, 'all 2 tracks · m4a')
   assert.equal(list[presetChoiceIndex(list, 'best')]!.label, 'all 2 videos · mp4')
+})
+
+test('predicts the cleaned title in JS', () => {
+  assert.equal(cleanTitle('Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)', 'Rick Astley'), 'Never Gonna Give You Up')
+  assert.equal(cleanTitle('AC/DC - Thunderstruck (Official Video)', 'ac/dc'), 'Thunderstruck')
+  assert.equal(cleanTitle('Someone Else - Song', 'Rick Astley'), 'Someone Else - Song')
+  assert.equal(cleanTitle('(Official Video)'), '(Official Video)')
 })

@@ -75,6 +75,16 @@ export async function findFfmpeg(): Promise<string | undefined> {
   return undefined
 }
 
+/**
+ * YouTube hides its media urls behind a JavaScript challenge. Unsolved, some
+ * formats go missing and the rest fail at random with "HTTP Error 403". The
+ * official yt-dlp binaries ship the solver; pip/pipx/brew installs don't, so
+ * let yt-dlp fetch it (from yt-dlp's own GitHub, cached after the first run),
+ * and offer the Node running yoinks as a JS runtime for machines without
+ * Deno — yt-dlp skips it by itself if it's too old.
+ */
+export const CHALLENGE_ARGS = ['--remote-components', 'ejs:github', '--js-runtimes', `node:${process.execPath}`]
+
 export type VideoInfo = {
   _type?: string
   title: string
@@ -84,10 +94,20 @@ export type VideoInfo = {
   webpage_url?: string
   extractor_key?: string
   formats?: RawFormat[]
+  thumbnail?: string
+  thumbnails?: Thumbnail[]
   playlist_count?: number
   /** Playlists only — with --flat-playlist these are lightweight stubs. */
-  entries?: Array<{title?: string; duration?: number; uploader?: string; channel?: string} | null>
+  entries?: Array<{
+    title?: string
+    duration?: number
+    uploader?: string
+    channel?: string
+    thumbnails?: Thumbnail[]
+  } | null>
 }
+
+type Thumbnail = {url: string; width?: number; height?: number}
 
 export function isPlaylist(info: VideoInfo): boolean {
   return info._type === 'playlist' && (info.entries?.length ?? 0) > 0
@@ -127,7 +147,7 @@ export function playlistFolderName(info: VideoInfo): string {
   return sanitizeFilename(name)
 }
 
-function sanitizeFilename(name: string): string {
+export function sanitizeFilename(name: string): string {
   return (
     name
       // path separators and characters Windows / macOS Finder refuse
@@ -163,7 +183,9 @@ export async function probe(ytdlp: string, url: string, signal?: AbortSignal): P
   const stdout = await new Promise<string>((resolve, reject) => {
     // --flat-playlist lists a playlist's entries without extracting every
     // video (seconds instead of minutes); single videos are unaffected
-    const child = spawn(ytdlp, ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', url], {signal})
+    const child = spawn(ytdlp, ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', ...CHALLENGE_ARGS, url], {
+      signal,
+    })
     let out = ''
     let stderr = ''
     child.stdout.on('data', chunk => (out += chunk))
@@ -236,6 +258,20 @@ export function cleanTitleArgs(albumArtist?: string): string[] {
   return args
 }
 
+/**
+ * What cleanTitleArgs makes of a title, computed up front — for suggesting a
+ * file name before yt-dlp has run.
+ */
+export function cleanTitle(title: string, artist?: string): string {
+  const noise = new RegExp(TITLE_NOISE.replace('(?i)', ''), 'gi')
+  let clean = title.replace(noise, '').trim()
+  if (artist) {
+    const prefix = new RegExp(`^${artist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+[-–—]\\s+(.+)$`, 'i')
+    clean = prefix.exec(clean)?.[1] ?? clean
+  }
+  return clean || title
+}
+
 function audioArgs(format: AudioFormat, albumArtist?: string): string[] {
   return [
     // m4a is YouTube's own AAC stream, so it's kept as-is instead of re-encoded
@@ -275,7 +311,9 @@ export function buildChoices(info: VideoInfo): DownloadChoice[] {
     const candidates = videos.filter(f => f.height === height)
     const best = [...candidates].sort((a, b) => scoreVideo(b) - scoreVideo(a))[0]
     const muxed = best.acodec && best.acodec !== 'none'
-    const size = (best.filesize ?? best.filesize_approx ?? 0) + (muxed ? 0 : audioSize ?? 0)
+    const videoSize = best.filesize ?? best.filesize_approx
+    // no video size means no estimate — the audio alone would read as a tiny file
+    const size = videoSize ? videoSize + (muxed ? 0 : audioSize ?? 0) : 0
     const sizeLabel = size > 0 ? ` · ~${formatBytes(size)}` : ''
     choices.push({
       kind: 'video',
@@ -371,6 +409,8 @@ export type DownloadHandlers = {
   onProcessing: () => void
   /** Playlists only: a new entry started (1-based). */
   onItem?: (item: number, totalItems: number) => void
+  /** A file is finished — downloaded, converted and tagged. */
+  onFile?: (filepath: string) => void
 }
 
 export type DownloadResult = {
@@ -406,6 +446,7 @@ export function download(
   const args = [
     ...(opts.infoJsonPath && !playlist ? ['--load-info-json', opts.infoJsonPath] : [opts.url]),
     ...opts.choice.args,
+    ...CHALLENGE_ARGS,
     // one unavailable video shouldn't sink the whole playlist
     ...(playlist ? ['--yes-playlist', '--ignore-errors'] : ['--no-playlist']),
     '--no-warnings',
@@ -487,6 +528,7 @@ export function download(
         } else if (path.isAbsolute(line)) {
           filepaths.push(line)
           destinations = []
+          handlers.onFile?.(line)
         }
       }
     })

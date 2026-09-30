@@ -31,6 +31,8 @@ const HELP = `
     --m4a           skip the picker: audio as m4a (AAC, no re-encoding)
     --best          skip the picker: highest-resolution mp4
     -o, --out <dir> save here instead of ~/Downloads
+    --web           open yoinks in your browser instead (runs locally)
+    --port <n>      port for --web (default 4455)
     --theme <mode>  use auto, light, or dark for this run
     -h, --help      show this help
     -v, --version   show version
@@ -58,10 +60,20 @@ if (args.version) {
   process.exit(0)
 }
 
-const initialUrl = args.initialUrl
-const initialThemeMode = args.themeMode ?? 'auto'
 const expandHome = (dir: string) => (dir === '~' || dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(1)) : dir)
 const outDir = args.outDir ? path.resolve(expandHome(args.outDir)) : undefined
+
+if (args.web) {
+  // lazy: the terminal UI shouldn't pay for loading the server
+  const {startWebServer} = await import('./server/server.js')
+  const url = await startWebServer({port: args.port, open: !args.noOpen, outDir})
+  console.log(`yoinks web → ${url}\n\nRunning on this computer only. Press ^c to stop.`)
+  // keep serving until ^c
+  await new Promise(() => {})
+}
+
+const initialUrl = args.initialUrl
+const initialThemeMode = args.themeMode ?? 'auto'
 
 const isTTY = Boolean(process.stdout.isTTY)
 

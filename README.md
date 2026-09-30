@@ -78,6 +78,23 @@ click the theme control in the footer to cycle through `auto`, `light`, and
 
 <img src="assets/download-options.png" alt="yoinks format picker — resolutions with estimated file sizes, plus audio-only mp3" width="100%">
 
+## In your browser
+
+```sh
+$ yoinks --web                           # opens http://localhost:4455
+```
+
+Prefer a window to a terminal? `yoinks --web` starts a small server on this
+computer and opens the same thing in your browser: paste a link, pick a
+format, download. Files are saved exactly like in the terminal — straight
+into `~/Downloads`, playlists in their own `Artist - Album` folder. Hit
+**Change** to pick another folder (a native folder dialog; the choice is
+remembered), and **Show in Finder** when it's done. `-o` works here too.
+
+The server only listens on `127.0.0.1` and refuses requests from other
+websites, so nothing outside your own browser can drive it. `--port`
+picks another port; `--no-open` skips opening the browser.
+
 ## How it works
 
 - Powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp). On first run,
@@ -96,6 +113,10 @@ npm run build        # bundle to dist/ with tsup
 npm run dev          # rebuild on change
 node dist/cli.js <url>
 npm run typecheck
+
+# web app, with hot reload
+node dist/cli.js --web --no-open   # api on :4455
+npm run dev:web                    # ui on :5173, proxies /api
 ```
 
 To try it as a global command without publishing: `npm link`, then run
