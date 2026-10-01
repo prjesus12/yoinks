@@ -7,72 +7,156 @@ import {Readable} from 'node:stream'
 import {pipeline} from 'node:stream/promises'
 import {formatBytes} from './format.js'
 
-const YOINKS_DIR = path.join(os.homedir(), '.yoinks', 'bin')
+const YOINKS_HOME = path.join(os.homedir(), '.yoinks')
 const RELEASE_BASE = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download'
 
-function ytDlpAssetName(): string {
-  if (process.platform === 'win32') return 'yt-dlp.exe'
-  if (process.platform === 'darwin') return 'yt-dlp_macos'
-  return process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux'
-}
+/**
+ * Which official build to use. The single-file builds unpack themselves on
+ * every launch — on macOS that means a fresh security scan each time, ~12 s
+ * per run. The folder builds (zipped) pay that once and then start in a
+ * fraction of a second. Linux keeps the single file: no scan there, and
+ * unzip isn't a given.
+ */
+const BUILD =
+  process.platform === 'darwin'
+    ? {asset: 'yt-dlp_macos.zip', dir: path.join(YOINKS_HOME, 'yt-dlp'), exe: 'yt-dlp_macos'}
+    : process.platform === 'win32'
+      ? {asset: 'yt-dlp_win.zip', dir: path.join(YOINKS_HOME, 'yt-dlp'), exe: 'yt-dlp.exe'}
+      : {
+          asset: process.arch === 'arm64' ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux',
+          dir: path.join(YOINKS_HOME, 'bin'),
+          exe: 'yt-dlp',
+        }
+
+/** yoinks' own copy of the official yt-dlp — the one it can update. */
+export const MANAGED_YTDLP = path.join(BUILD.dir, BUILD.exe)
+
+// a brand-new build's first launch includes the OS security scan
+const FIRST_RUN_TIMEOUT = 120_000
+
+/**
+ * Environment for yt-dlp. Inside Electron, process.execPath is the app
+ * itself; this flag makes it behave as plain Node when yt-dlp runs it to
+ * solve YouTube's JS challenge (see CHALLENGE_ARGS).
+ */
+export const childEnv: NodeJS.ProcessEnv = process.versions.electron
+  ? {...process.env, ELECTRON_RUN_AS_NODE: '1'}
+  : process.env
 
 // async on purpose: a spawnSync here blocks the event loop, which freezes
 // ink mid-frame — the user hits enter and sees nothing until it returns
-function commandWorks(cmd: string, args: string[]): Promise<boolean> {
+export function commandOutput(cmd: string, args: string[], timeout = 30_000): Promise<string | undefined> {
   return new Promise(resolve => {
     let child
     try {
-      child = spawn(cmd, args, {stdio: 'ignore', timeout: 10_000})
+      child = spawn(cmd, args, {stdio: ['ignore', 'pipe', 'ignore'], timeout})
     } catch {
-      resolve(false)
+      resolve(undefined)
       return
     }
-    child.on('error', () => resolve(false))
-    child.on('close', code => resolve(code === 0))
+    let out = ''
+    child.stdout.on('data', chunk => (out += chunk))
+    child.on('error', () => resolve(undefined))
+    child.on('close', code => resolve(code === 0 ? out : undefined))
   })
+}
+
+const commandWorks = async (cmd: string, args: string[], timeout?: number) =>
+  (await commandOutput(cmd, args, timeout)) !== undefined
+
+/**
+ * Download the latest official yt-dlp into ~/.yoinks. The old copy is only
+ * replaced once the new one has proven it runs.
+ */
+export async function installManagedYtDlp(signal?: AbortSignal): Promise<string> {
+  await fs.mkdir(YOINKS_HOME, {recursive: true})
+  const response = await fetch(`${RELEASE_BASE}/${BUILD.asset}`, {signal})
+  if (!response.ok || !response.body) {
+    throw new Error(`Could not download yt-dlp (${response.status}). Check your connection and try again.`)
+  }
+  const download = path.join(YOINKS_HOME, `${BUILD.asset}.download`)
+  const staging = `${BUILD.dir}.new`
+  const retired = `${BUILD.dir}.old`
+  try {
+    await pipeline(Readable.fromWeb(response.body as never), createWriteStream(download), {signal})
+    await fs.rm(staging, {recursive: true, force: true})
+    await fs.mkdir(staging, {recursive: true})
+    if (BUILD.asset.endsWith('.zip')) {
+      // bsdtar reads zips; it ships with macOS and Windows 10+
+      if (!(await commandWorks('tar', ['-xf', download, '-C', staging], FIRST_RUN_TIMEOUT))) {
+        throw new Error('Couldn’t unpack the yt-dlp download.')
+      }
+    } else {
+      await fs.rename(download, path.join(staging, BUILD.exe))
+    }
+    const exe = path.join(staging, BUILD.exe)
+    await fs.chmod(exe, 0o755)
+    if (!(await commandWorks(exe, ['--version'], FIRST_RUN_TIMEOUT))) {
+      throw new Error('The downloaded yt-dlp doesn’t run on this system.')
+    }
+    // swap folders; the old one is kept until the new one is in place
+    await fs.rm(retired, {recursive: true, force: true})
+    await fs.rename(BUILD.dir, retired).catch(() => {})
+    try {
+      await fs.rename(staging, BUILD.dir)
+    } catch (error) {
+      await fs.rename(retired, BUILD.dir).catch(() => {})
+      throw error
+    }
+    await fs.rm(retired, {recursive: true, force: true})
+    // earlier versions kept the slow single-file build here
+    if (BUILD.dir !== path.join(YOINKS_HOME, 'bin')) await fs.rm(path.join(YOINKS_HOME, 'bin'), {recursive: true, force: true})
+  } finally {
+    await fs.rm(download, {force: true})
+    await fs.rm(staging, {recursive: true, force: true})
+  }
+  return MANAGED_YTDLP
 }
 
 /**
  * Resolve a usable yt-dlp binary: system install first, then a previously
  * downloaded copy, then download the standalone binary from GitHub releases.
+ * `preferManaged` skips the system install — the desktop app keeps its own
+ * copy so it can update it.
  */
-export async function ensureYtDlp(onStatus: (message: string) => void, signal?: AbortSignal): Promise<string> {
-  if (await commandWorks('yt-dlp', ['--version'])) return 'yt-dlp'
-
-  const local = path.join(YOINKS_DIR, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
-  if (await commandWorks(local, ['--version'])) return local
-
+export async function ensureYtDlp(
+  onStatus: (message: string) => void,
+  signal?: AbortSignal,
+  {preferManaged = false} = {},
+): Promise<string> {
+  if (!preferManaged && (await commandWorks('yt-dlp', ['--version']))) return 'yt-dlp'
+  if (await commandWorks(MANAGED_YTDLP, ['--version'], FIRST_RUN_TIMEOUT)) return MANAGED_YTDLP
   onStatus('first run: fetching yt-dlp…')
-  await fs.mkdir(YOINKS_DIR, {recursive: true})
-
-  const url = `${RELEASE_BASE}/${ytDlpAssetName()}`
-  const response = await fetch(url, {signal})
-  if (!response.ok || !response.body) {
-    throw new Error(`Could not download yt-dlp (${response.status}). Check your connection and try again.`)
-  }
-
-  const tmp = `${local}.download`
-  await pipeline(Readable.fromWeb(response.body as never), createWriteStream(tmp), {signal})
-  await fs.chmod(tmp, 0o755)
-  await fs.rename(tmp, local)
-  return local
+  return installManagedYtDlp(signal)
 }
 
-/**
- * Find ffmpeg for stream merging / mp3 extraction: system install first,
- * ffmpeg-static as fallback. Returns undefined if neither exists — yt-dlp
- * still works for single-file formats without it.
- */
-export async function findFfmpeg(): Promise<string | undefined> {
-  if (await commandWorks('ffmpeg', ['-version'])) return undefined // on PATH, yt-dlp finds it itself
+export type FfmpegSource = {path: string; source: 'system' | 'bundled'}
+
+/** System ffmpeg first, the bundled ffmpeg-static as fallback. */
+export async function resolveFfmpeg(): Promise<FfmpegSource | undefined> {
+  if (await commandWorks('ffmpeg', ['-version'])) return {path: 'ffmpeg', source: 'system'}
   try {
     const mod = await import('ffmpeg-static')
-    const ffmpegPath = (mod.default ?? mod) as unknown as string | null
-    if (ffmpegPath && (await commandWorks(ffmpegPath, ['-version']))) return ffmpegPath
+    // packaged apps keep binaries outside the asar archive — they can't run from inside it
+    const ffmpegPath = ((mod.default ?? mod) as unknown as string | null)?.replace(
+      `app.asar${path.sep}`,
+      `app.asar.unpacked${path.sep}`,
+    )
+    if (ffmpegPath && (await commandWorks(ffmpegPath, ['-version']))) return {path: ffmpegPath, source: 'bundled'}
   } catch {
     // ffmpeg-static not installed or unsupported platform
   }
   return undefined
+}
+
+/**
+ * Find ffmpeg for stream merging / mp3 extraction. Returns undefined when it's
+ * on PATH (yt-dlp finds it itself) or missing — yt-dlp still works for
+ * single-file formats without it.
+ */
+export async function findFfmpeg(): Promise<string | undefined> {
+  const ffmpeg = await resolveFfmpeg()
+  return ffmpeg?.source === 'bundled' ? ffmpeg.path : undefined
 }
 
 /**
@@ -185,6 +269,7 @@ export async function probe(ytdlp: string, url: string, signal?: AbortSignal): P
     // video (seconds instead of minutes); single videos are unaffected
     const child = spawn(ytdlp, ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', ...CHALLENGE_ARGS, url], {
       signal,
+      env: childEnv,
     })
     let out = ''
     let stderr = ''
@@ -469,7 +554,7 @@ export function download(
   if (opts.ffmpegLocation) args.push('--ffmpeg-location', opts.ffmpegLocation)
 
   return new Promise((resolve, reject) => {
-    const child = spawn(opts.ytdlp, args, {signal})
+    const child = spawn(opts.ytdlp, args, {signal, env: childEnv})
     activeChild = child
 
     let stderr = ''

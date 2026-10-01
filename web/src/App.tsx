@@ -4,17 +4,24 @@ import {
   chooseFolder,
   dropJob,
   followJob,
+  getComponents,
   getSettings,
   probeUrl,
   revealJob,
   startDownload,
   type ChoiceView,
+  type ComponentsView,
   type JobEvent,
   type ProbeView,
   type Settings,
 } from './api'
-import {ArrowRight, Check, Folder, Music, Spinner, Video, X} from './icons'
+import {ArrowRight, Check, Folder, Music, Settings as SettingsIcon, Spinner, Video, X} from './icons'
 import {Logo} from './logo'
+import {SettingsDialog, updateAvailable} from './SettingsDialog'
+
+// set by the desktop app (?shell=darwin|win32|linux) — styles the title bar
+const SHELL = new URLSearchParams(location.search).get('shell') ?? undefined
+if (SHELL) document.documentElement.dataset.shell = SHELL
 
 type Progress = Extract<JobEvent, {type: 'progress'}>
 
@@ -70,14 +77,25 @@ export function App() {
   const [showAllVideo, setShowAllVideo] = useState(false)
   const [settings, setSettings] = useState<Settings>()
   const [choosing, setChoosing] = useState(false)
+  const [components, setComponents] = useState<ComponentsView>()
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const runRef = useRef<{jobId: string; stop: () => void} | undefined>(undefined)
 
   useEffect(() => {
     inputRef.current?.focus()
     getSettings().then(setSettings, () => {})
+    getComponents().then(setComponents, () => {})
     return () => runRef.current?.stop()
   }, [])
+
+  // first launch: yt-dlp is still downloading — follow along until it's ready
+  const installing = Boolean(components?.ytdlp.busy && !components.ytdlp.version)
+  useEffect(() => {
+    if (!installing) return
+    const timer = setInterval(() => getComponents().then(setComponents, () => {}), 2000)
+    return () => clearInterval(timer)
+  }, [installing])
 
   async function onChooseFolder() {
     setChoosing(true)
@@ -198,10 +216,34 @@ export function App() {
         <button type="button" className="brand" onClick={reset} disabled={state.step === 'downloading'} aria-label="yoinks — start over">
           <Logo height={16} />
         </button>
-        <span className="badge">
-          <span className="dot" aria-hidden /> Running on this computer
-        </span>
+        <div className="header-end">
+          {SHELL ? null : (
+            <span className="badge">
+              <span className="dot" aria-hidden /> Running on this computer
+            </span>
+          )}
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label={updateAvailable(components) ? 'Settings — update available' : 'Settings'}
+            title="Settings"
+          >
+            <SettingsIcon />
+            {updateAvailable(components) ? <span className="update-dot" aria-hidden /> : null}
+          </button>
+        </div>
       </header>
+
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onChooseFolder={() => void onChooseFolder()}
+        choosing={choosing}
+        components={components}
+        onComponents={setComponents}
+      />
 
       <main className="main">
         <section className="hero">
@@ -243,6 +285,11 @@ export function App() {
         </form>
 
         {state.step === 'idle' && state.error ? <p className="alert" role="alert">{state.error}</p> : null}
+        {installing && (state.step === 'idle' || state.step === 'probing') ? (
+          <p className="notice" role="status">
+            <Spinner /> Getting yt-dlp ready — this only happens the first time.
+          </p>
+        ) : null}
 
         {state.step === 'probing' ? <SkeletonCard /> : null}
 

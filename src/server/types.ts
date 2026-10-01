@@ -52,3 +52,21 @@ export type JobEvent =
   | {type: 'file'; index: number; name: string}
   | {type: 'done'; count: number; failed: number; path: string}
   | {type: 'error'; message: string}
+
+/** The tools yoinks runs on, for the settings panel. */
+export type ComponentsView = {
+  appVersion: string
+  ytdlp: {
+    version?: string
+    /** Newest release on GitHub, once checked. */
+    latest?: string
+    /** yoinks' own copy (updatable here) vs. one installed on the system. */
+    managed: boolean
+    /** Installing or updating right now. */
+    busy: boolean
+    error?: string
+    checkedAt?: number
+  }
+  ffmpeg: {version?: string; source: 'system' | 'bundled' | 'missing'}
+  autoUpdate: boolean
+}

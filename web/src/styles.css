@@ -902,3 +902,259 @@ input {
     flex: 1;
   }
 }
+
+/* header controls ----------------------------------------------------- */
+
+.header-end {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.icon-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.icon-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.update-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* desktop app: macOS draws its traffic lights over the header, which doubles
+   as the window's drag handle */
+html[data-shell] .header {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+html[data-shell] .header button {
+  -webkit-app-region: no-drag;
+}
+
+html[data-shell='darwin'] .header {
+  max-width: none;
+  padding: 12px 16px 12px 88px;
+}
+
+html[data-shell] .main {
+  padding-top: 48px;
+}
+
+/* settings sheet ------------------------------------------------------ */
+
+.sheet {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.35);
+}
+
+.sheet::backdrop {
+  background: rgba(9, 9, 11, 0.4);
+  backdrop-filter: blur(2px);
+}
+
+.sheet[open] {
+  animation: rise 0.2s ease-out;
+}
+
+.sheet-inner {
+  padding: 8px 20px 16px;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0 6px;
+}
+
+.sheet-head h2 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.section {
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.sheet-head + .section {
+  border-top: 0;
+}
+
+.section h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  color: var(--faint);
+}
+
+.section-note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.row-text {
+  min-width: 0;
+}
+
+.row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.row-sub {
+  margin-top: 1px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.row-sub.path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-actions {
+  flex: none;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  color: var(--text);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--muted);
+}
+
+.pill.ok {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.pill.accent {
+  background: color-mix(in srgb, #3b82f6 14%, transparent);
+  color: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pill.accent {
+    color: #93c5fd;
+  }
+}
+
+.toggle-row {
+  cursor: pointer;
+}
+
+.switch {
+  flex: none;
+  appearance: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s;
+}
+
+.switch:checked {
+  background: var(--text);
+}
+
+.switch:checked::after {
+  transform: translateX(16px);
+  background: var(--bg);
+}
+
+.switch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.sheet-foot {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--faint);
+  text-align: center;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}

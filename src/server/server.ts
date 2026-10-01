@@ -2,6 +2,7 @@ import {spawn} from 'node:child_process'
 import {randomUUID} from 'node:crypto'
 import fs from 'node:fs/promises'
 import http from 'node:http'
+import {createRequire} from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -13,6 +14,8 @@ import {
   download,
   ensureYtDlp,
   findFfmpeg,
+  installManagedYtDlp,
+  MANAGED_YTDLP,
   isPlaylist,
   playlistAlbum,
   playlistFolderName,
@@ -22,15 +25,31 @@ import {
   type DownloadResult,
   type VideoInfo,
 } from '../lib/ytdlp.js'
-import {chooseFolder, folderPickerAvailable, reveal, revealLabel} from './desktop.js'
-import type {ChoiceView, JobEvent, ProbeView, Settings} from './types.js'
+import {ffmpegView, isNewer, latestYtDlpVersion, loadStored, saveStored, ytDlpVersion} from './components.js'
+import * as desktop from './desktop.js'
+import type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from './types.js'
 
-export type {ChoiceView, JobEvent, ProbeView, Settings} from './types.js'
+export type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from './types.js'
+
+/** OS integration — the desktop app swaps in Electron's native versions. */
+export type Desktop = {
+  chooseFolder: (current: string) => Promise<string | undefined>
+  reveal: (target: string, isFolder: boolean) => void
+  revealLabel: string
+  canChooseFolder: boolean
+}
 
 const DEFAULT_PORT = 4455
 const TTL = 60 * 60 * 1000 // probes and finished jobs are dropped after an hour
 const MAX_BODY = 16 * 1024
-const SETTINGS_FILE = path.join(os.homedir(), '.config', 'yoinks', 'web.json')
+const DAY = 24 * 60 * 60 * 1000
+
+let APP_VERSION = 'dev'
+try {
+  APP_VERSION = (createRequire(import.meta.url)('../package.json') as {version: string}).version
+} catch {
+  // running from source
+}
 
 type Probe = {
   id: string
@@ -58,35 +77,111 @@ type Job = {
 
 const probes = new Map<string, Probe>()
 const jobs = new Map<string, Job>()
-let ytdlpPath: string | undefined
 /** Where downloads land — like the terminal UI, straight onto disk. */
 let outDir = path.join(os.homedir(), 'Downloads')
-let canChooseFolder = false
+let osHooks: Desktop = {
+  chooseFolder: desktop.chooseFolder,
+  reveal: desktop.reveal,
+  revealLabel: desktop.revealLabel(),
+  canChooseFolder: false,
+}
 
 const prettyPath = (p: string) => (p.startsWith(os.homedir()) ? `~${p.slice(os.homedir().length)}` : p)
 
 const settingsView = (): Settings => ({
   outDir: prettyPath(outDir),
-  canChooseFolder,
-  revealLabel: revealLabel(),
+  canChooseFolder: osHooks.canChooseFolder,
+  revealLabel: osHooks.revealLabel,
 })
 
-async function loadSavedOutDir(): Promise<string | undefined> {
-  try {
-    const saved = JSON.parse(await fs.readFile(SETTINGS_FILE, 'utf8')) as {outDir?: unknown}
-    if (typeof saved.outDir === 'string' && (await fs.stat(saved.outDir)).isDirectory()) return saved.outDir
-  } catch {
-    // no saved folder, or it's gone — use the default
-  }
-  return undefined
+// ---------------------------------------------------------------------------
+// yt-dlp: found once, shared by every probe and download, updatable in place
+
+const yt = {
+  path: undefined as string | undefined,
+  ready: undefined as Promise<string> | undefined,
+  /** Use yoinks' own copy even when the system has one (the desktop app does). */
+  managed: false,
+  busy: false,
+  error: undefined as string | undefined,
+  latest: undefined as string | undefined,
+  checkedAt: undefined as number | undefined,
+  autoUpdate: true,
 }
 
-async function saveOutDir(dir: string) {
+function getYtDlp(): Promise<string> {
+  yt.ready ??= ensureYtDlp(() => (yt.busy = true), undefined, {preferManaged: yt.managed})
+    .then(bin => {
+      yt.path = bin
+      yt.error = undefined
+      return bin
+    })
+    .catch((error: unknown) => {
+      yt.ready = undefined // let the next request try again
+      yt.error = error instanceof Error ? error.message : String(error)
+      throw error
+    })
+    .finally(() => (yt.busy = false))
+  return yt.ready
+}
+
+async function checkLatest() {
+  yt.latest = await latestYtDlpVersion()
+  yt.checkedAt = Date.now()
+  await saveStored({latest: yt.latest, lastCheck: yt.checkedAt})
+}
+
+/** Fetch the newest official yt-dlp and switch to it (from a system copy too). */
+async function updateYtDlp() {
+  if (yt.busy) return
+  yt.busy = true
+  yt.error = undefined
   try {
-    await fs.mkdir(path.dirname(SETTINGS_FILE), {recursive: true})
-    await fs.writeFile(SETTINGS_FILE, `${JSON.stringify({outDir: dir}, null, 2)}\n`)
+    const bin = await installManagedYtDlp()
+    yt.path = bin
+    yt.ready = Promise.resolve(bin)
+    if (!yt.managed) {
+      yt.managed = true
+      await saveStored({managedYtDlp: true})
+    }
+  } catch (error) {
+    yt.error = error instanceof Error ? error.message : String(error)
+  } finally {
+    yt.busy = false
+  }
+}
+
+async function componentsView(): Promise<ComponentsView> {
+  // don't hold the panel hostage to a first-run download
+  const bin = yt.path ?? (yt.busy ? undefined : await getYtDlp().catch(() => undefined))
+  return {
+    appVersion: APP_VERSION,
+    ytdlp: {
+      version: bin ? await ytDlpVersion(bin) : undefined,
+      latest: yt.latest,
+      managed: yt.path === MANAGED_YTDLP,
+      busy: yt.busy,
+      error: yt.error,
+      checkedAt: yt.checkedAt,
+    },
+    ffmpeg: await ffmpegView(),
+    autoUpdate: yt.autoUpdate,
+  }
+}
+
+/** Daily: keep yoinks' own yt-dlp current. A system install is left alone. */
+async function autoUpdateTick() {
+  if (!yt.autoUpdate || yt.busy) return
+  // a running download holds the binary open (and Windows won't replace it)
+  if ([...jobs.values()].some(job => !job.finished)) return
+  try {
+    const bin = await getYtDlp()
+    if (bin !== MANAGED_YTDLP) return
+    if (!yt.latest || Date.now() - (yt.checkedAt ?? 0) > DAY) await checkLatest()
+    const current = await ytDlpVersion(bin)
+    if (yt.latest && current && isNewer(yt.latest, current)) await updateYtDlp()
   } catch {
-    // remembering is a nicety
+    // offline or rate-limited — try again next tick
   }
 }
 
@@ -181,7 +276,7 @@ async function runJob(job: Job, probe: Probe, choice: DownloadChoice) {
   try {
     const ffmpegLocation = await findFfmpeg()
     await fs.mkdir(outDir, {recursive: true})
-    const base = {ytdlp: ytdlpPath!, ffmpegLocation, url: probe.url, choice, outDir}
+    const base = {ytdlp: await getYtDlp(), ffmpegLocation, url: probe.url, choice, outDir}
     let result: DownloadResult
     try {
       result = await download({...base, infoJsonPath: probe.infoJsonPath}, handlers, signal)
@@ -206,6 +301,9 @@ async function runJob(job: Job, probe: Probe, choice: DownloadChoice) {
     job.listeners.clear()
   }
 }
+
+/** Downloads still running — the desktop app asks before quitting on them. */
+export const activeDownloads = () => [...jobs.values()].filter(job => !job.finished).length
 
 /** Cancel (a no-op once finished). download() removes its own partial files. */
 function dropJob(job: Job) {
@@ -287,10 +385,9 @@ async function handleProbe(req: http.IncomingMessage, res: http.ServerResponse) 
   if (typeof url !== 'string' || !isProbablyUrl(url.trim())) {
     throw new HttpError(400, 'That doesn’t look like a link — paste a full URL.')
   }
-  ytdlpPath ??= await ensureYtDlp(() => {})
   let result
   try {
-    result = await probe(ytdlpPath, url.trim())
+    result = await probe(await getYtDlp(), url.trim())
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(`✗ ${url.trim()}: ${message}`)
@@ -391,12 +488,35 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse) {
   if (pathname === '/api/choose-folder' && req.method === 'POST') {
     await readJson(req)
     // opens the OS folder dialog on this machine; resolves when it's closed
-    const picked = await chooseFolder(outDir)
+    const picked = await osHooks.chooseFolder(outDir)
     if (picked) {
       outDir = picked
-      await saveOutDir(picked)
+      await saveStored({outDir: picked})
     }
     return sendJson(res, 200, settingsView())
+  }
+  if (pathname === '/api/components' && req.method === 'GET') return sendJson(res, 200, await componentsView())
+  if (pathname === '/api/components/check' && req.method === 'POST') {
+    await readJson(req)
+    try {
+      await checkLatest()
+    } catch (error) {
+      yt.error = error instanceof Error ? error.message : String(error)
+    }
+    return sendJson(res, 200, await componentsView())
+  }
+  if (pathname === '/api/components/update' && req.method === 'POST') {
+    await readJson(req)
+    await updateYtDlp()
+    return sendJson(res, 200, await componentsView())
+  }
+  if (pathname === '/api/components/auto-update' && req.method === 'POST') {
+    const {enabled} = await readJson(req)
+    if (typeof enabled !== 'boolean') throw new HttpError(400, 'expected {enabled: boolean}')
+    yt.autoUpdate = enabled
+    await saveStored({autoUpdate: enabled})
+    if (enabled) void autoUpdateTick()
+    return sendJson(res, 200, await componentsView())
   }
   if (pathname === '/api/probe' && req.method === 'POST') return handleProbe(req, res)
   if (pathname === '/api/download' && req.method === 'POST') return handleDownload(req, res)
@@ -419,7 +539,7 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse) {
     if (req.method === 'POST' && jobMatch[2] === '/reveal') {
       await readJson(req)
       if (!job.result) throw new HttpError(409, 'not finished yet')
-      reveal(job.result.path, job.result.isFolder)
+      osHooks.reveal(job.result.path, job.result.isFolder)
       res.writeHead(204).end()
       return
     }
@@ -444,10 +564,30 @@ export async function startWebServer({
   port = DEFAULT_PORT,
   open = true,
   outDir: requestedOutDir,
-}: {port?: number; open?: boolean; outDir?: string} = {}): Promise<string> {
+  preferManagedYtDlp = false,
+  desktop: hooks,
+}: {
+  /** 0 picks any free port. */
+  port?: number
+  open?: boolean
+  outDir?: string
+  /** Desktop app: always use (and keep updating) yoinks' own yt-dlp. */
+  preferManagedYtDlp?: boolean
+  desktop?: Partial<Desktop>
+} = {}): Promise<string> {
+  const stored = await loadStored()
+  const savedOutDir = stored.outDir && (await fs.stat(stored.outDir).catch(() => undefined))?.isDirectory()
   // -o wins for this run; otherwise the folder picked last time, else ~/Downloads
-  outDir = requestedOutDir ?? (await loadSavedOutDir()) ?? outDir
-  canChooseFolder = await folderPickerAvailable()
+  outDir = requestedOutDir ?? (savedOutDir ? stored.outDir! : outDir)
+  osHooks = {...osHooks, canChooseFolder: await desktop.folderPickerAvailable(), ...hooks}
+  yt.managed = preferManagedYtDlp || stored.managedYtDlp === true
+  yt.autoUpdate = stored.autoUpdate ?? true
+  yt.latest = stored.latest
+  yt.checkedAt = stored.lastCheck
+  // warm up (and on a first run, download) yt-dlp before the first paste
+  void getYtDlp()
+    .then(() => autoUpdateTick())
+    .catch(() => {})
 
   const server = http.createServer((req, res) => {
     route(req, res).catch((error: unknown) => {
@@ -472,11 +612,13 @@ export async function startWebServer({
       })
       break
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE' || bound >= port + 20) throw error
+      if (port === 0 || (error as NodeJS.ErrnoException).code !== 'EADDRINUSE' || bound >= port + 20) throw error
     }
   }
+  if (port === 0) bound = (server.address() as {port: number}).port
 
   setInterval(sweep, 5 * 60 * 1000).unref()
+  setInterval(() => void autoUpdateTick(), 6 * 60 * 60 * 1000).unref()
   const cleanup = () => {
     for (const job of jobs.values()) job.controller.abort()
   }

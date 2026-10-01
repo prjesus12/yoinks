@@ -10,5 +10,5 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "../src/server/types.ts", "../src/lib/format.ts"]
+  "include": ["src", "../src/server/types.ts", "../src/lib/format.ts", "../src/lib/version.ts"]
 }

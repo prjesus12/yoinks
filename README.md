@@ -78,6 +78,30 @@ click the theme control in the footer to cycle through `auto`, `light`, and
 
 <img src="assets/download-options.png" alt="yoinks format picker — resolutions with estimated file sizes, plus audio-only mp3" width="100%">
 
+## Desktop app
+
+yoinks also comes as an app for macOS, Windows and Linux — the same screen
+as `--web`, in its own window, no terminal needed. Grab the installer for
+your system from the releases page (`.dmg`, `.exe`, `.AppImage` / `.deb`).
+
+The app keeps its own copy of the official yt-dlp and keeps it current: it
+checks once a day and updates by itself (turn that off in **Settings**,
+where you can also check or update by hand and see which ffmpeg it uses).
+YouTube changes often, and an up-to-date yt-dlp is what keeps downloads
+working. ffmpeg is bundled and updates with the app.
+
+The builds aren't notarized/signed by default, so the first launch needs a
+right-click → **Open** on macOS, and **More info → Run anyway** on Windows.
+
+```sh
+npm run app          # run it from source
+npm run dist:app     # build the installer for this computer into release/
+```
+
+The **Desktop app** GitHub workflow builds all platforms (push a `v*` tag
+for a draft release with every installer attached). Add `CSC_LINK` /
+`CSC_KEY_PASSWORD` secrets to sign the macOS and Windows builds.
+
 ## In your browser
 
 ```sh

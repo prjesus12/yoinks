@@ -63,3 +63,17 @@ export const Spinner = (p: Props) => (
     <path className="spin" d="M8 1.75A6.25 6.25 0 1 1 1.75 8" />
   </Svg>
 )
+
+export const Settings = (p: Props) => (
+  <Svg {...p}>
+    <path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6" />
+    <circle cx="10" cy="4.5" r="1.5" />
+    <circle cx="6" cy="11.5" r="1.5" />
+  </Svg>
+)
+
+export const Refresh = (p: Props) => (
+  <Svg {...p}>
+    <path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3" />
+  </Svg>
+)

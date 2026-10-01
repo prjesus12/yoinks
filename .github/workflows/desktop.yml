@@ -1,0 +1,77 @@
+name: Desktop app
+
+# Builds the desktop installers on each OS — ffmpeg is bundled per platform,
+# so every target has to be built on its own system. Push a v* tag to get a
+# draft GitHub release with all of them attached; run it by hand to just get
+# the files as build artifacts.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest # Apple Silicon
+            target: --mac --arm64
+          - os: macos-15-intel
+            target: --mac --x64
+          - os: windows-latest
+            target: --win --x64
+          - os: ubuntu-latest
+            target: --linux --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        if: runner.os == 'Linux'
+      - run: npm run build
+      # No signing certificate in CI: macOS builds are ad-hoc signed (a valid
+      # signature, so Apple Silicon runs them — people right-click → Open the
+      # first time). Add CSC_LINK / CSC_KEY_PASSWORD secrets to sign for real.
+      - name: Package
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ] && [ -z "$CSC_LINK" ]; then
+            extra="-c.mac.identity=- -c.mac.hardenedRuntime=false"
+          fi
+          npx electron-builder ${{ matrix.target }} --publish never $extra
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yoinks-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            release/*.dmg
+            release/*-mac-*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/*

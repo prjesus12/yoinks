@@ -20,6 +20,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "start": "node dist/cli.js",
     "web": "node dist/cli.js --web",
+    "app": "npm run build && electron dist/electron-main.js",
+    "dist:app": "npm run build && electron-builder",
     "prepublishOnly": "npm test && npm run typecheck && npm run build"
   },
   "author": "Pablo Stanley",
@@ -48,6 +50,8 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
     "react-dom": "^19.3.0",
     "tsup": "^8.5.1",
     "tsx": "^4.23.1",
@@ -61,5 +65,56 @@
   "homepage": "https://github.com/pablostanley/yoinks#readme",
   "bugs": {
     "url": "https://github.com/pablostanley/yoinks/issues"
+  },
+  "build": {
+    "appId": "dev.yoinks.app",
+    "productName": "yoinks",
+    "copyright": "MIT License",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist/electron-main.js"
+    },
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "icon": "build/icon.png",
+    "artifactName": "yoinks-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "yoinks ${version}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "synopsis": "Download video and music from YouTube and 1,800+ sites",
+      "maintainer": "yoinks <noreply@yoinks.dev>"
+    }
   }
 }

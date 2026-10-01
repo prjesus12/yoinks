@@ -1,6 +1,6 @@
-import type {JobEvent, ProbeView, Settings} from '../../src/server/types'
+import type {ComponentsView, JobEvent, ProbeView, Settings} from '../../src/server/types'
 
-export type {ChoiceView, JobEvent, ProbeView, Settings} from '../../src/server/types'
+export type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from '../../src/server/types'
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   let res: Response
@@ -33,6 +33,16 @@ export const revealJob = (jobId: string) =>
     headers: {'content-type': 'application/json'},
     body: '{}',
   }).catch(() => {})
+
+export async function getComponents(): Promise<ComponentsView> {
+  const res = await fetch('/api/components')
+  if (!res.ok) throw new Error('Can’t reach yoinks.')
+  return (await res.json()) as ComponentsView
+}
+
+export const checkForUpdates = () => post<ComponentsView>('/api/components/check', {})
+export const updateYtDlp = () => post<ComponentsView>('/api/components/update', {})
+export const setAutoUpdate = (enabled: boolean) => post<ComponentsView>('/api/components/auto-update', {enabled})
 
 export const probeUrl = (url: string) => post<ProbeView>('/api/probe', {url})
 

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#27272a"/><stop offset="1" stop-color="#09090b"/></linearGradient>
+<pattern id="shade" width="44.00" height="44.00" patternUnits="userSpaceOnUse" x="380.00" y="292.00">
+<rect width="22.00" height="22.00" fill="#fafafa"/><rect x="22.00" y="22.00" width="22.00" height="22.00" fill="#fafafa"/>
+</pattern>
+</defs>
+<rect x="100.0" y="100.0" width="824" height="824" rx="185" fill="url(#bg)"/>
+<rect x="101.0" y="101.0" width="822" height="822" rx="184" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+<rect x="402.0" y="314.0" width="22.0" height="22.0" fill="#fafafa"/>
+<rect x="380.0" y="292.0" width="88.0" height="176.0" fill="url(#shade)"/>
+<rect x="556.0" y="292.0" width="88.0" height="176.0" fill="url(#shade)"/>
+<rect x="380.0" y="468.0" width="88.0" height="88.0" fill="#fafafa"/>
+<rect x="468.0" y="468.0" width="88.0" height="176.0" fill="#fafafa"/>
+<rect x="556.0" y="468.0" width="88.0" height="88.0" fill="#fafafa"/>
+<rect x="468.0" y="644.0" width="88.0" height="88.0" fill="#fafafa"/>
+</svg>
