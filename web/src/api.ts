@@ -27,6 +27,9 @@ export async function getSettings(): Promise<Settings> {
 /** Opens the system folder dialog on this computer; resolves once it closes. */
 export const chooseFolder = () => post<Settings>('/api/choose-folder', {})
 
+/** Hosted mode: where the browser fetches the finished file. */
+export const fileUrl = (jobId: string) => `/api/jobs/${jobId}/file`
+
 export const revealJob = (jobId: string) =>
   fetch(`/api/jobs/${jobId}/reveal`, {
     method: 'POST',

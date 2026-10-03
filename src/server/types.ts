@@ -17,6 +17,8 @@ export type Settings = {
   canChooseFolder: boolean
   /** "Show in Finder", "Show in Explorer", … */
   revealLabel: string
+  /** A public server: files are handed to the browser, nothing is saved on disk. */
+  hosted: boolean
 }
 
 export type ProbeView = {

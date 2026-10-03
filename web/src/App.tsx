@@ -3,6 +3,7 @@ import {formatBytes, formatDuration, formatEta, formatSpeed} from '../../src/lib
 import {
   chooseFolder,
   dropJob,
+  fileUrl,
   followJob,
   getComponents,
   getSettings,
@@ -208,6 +209,7 @@ export function App() {
     requestAnimationFrame(() => inputRef.current?.focus())
   }
 
+  const hosted = Boolean(settings?.hosted)
   const busy = state.step === 'probing' || state.step === 'downloading'
 
   return (
@@ -217,12 +219,12 @@ export function App() {
           <Logo height={16} />
         </button>
         <div className="header-end">
-          {SHELL ? null : (
+          {SHELL || hosted ? null : (
             <span className="badge">
               <span className="dot" aria-hidden /> Running on this computer
             </span>
           )}
-          <button
+          {hosted ? null : <button
             type="button"
             className="icon-button"
             onClick={() => setSettingsOpen(true)}
@@ -231,7 +233,7 @@ export function App() {
           >
             <SettingsIcon />
             {updateAvailable(components) ? <span className="update-dot" aria-hidden /> : null}
-          </button>
+          </button>}
         </div>
       </header>
 
@@ -249,8 +251,9 @@ export function App() {
         <section className="hero">
           <h1>Save video and music from anywhere.</h1>
           <p className="lede">
-            YouTube, X, Instagram, TikTok and 1,800+ sites. Playlists arrive as albums — a folder per album, with
-            cover art on every track.
+            {hosted
+              ? 'YouTube, X, Instagram, TikTok and 1,800+ sites. Paste a link, pick a format, save the file.'
+              : 'YouTube, X, Instagram, TikTok and 1,800+ sites. Playlists arrive as albums — a folder per album, with cover art on every track.'}
           </p>
         </section>
 
@@ -302,7 +305,7 @@ export function App() {
               <>
                 {state.error ? <p className="alert inline" role="alert">{state.error}</p> : null}
                 <div className="actions">
-                  <div className="destination">
+                  {hosted ? <div className="destination" /> : <div className="destination">
                     <span className="destination-label">Saves to</span>
                     <span className="destination-path">
                       <Folder />
@@ -315,7 +318,7 @@ export function App() {
                         </button>
                       ) : null}
                     </span>
-                  </div>
+                  </div>}
                   <button
                     className="button primary"
                     type="button"
@@ -348,7 +351,11 @@ export function App() {
 
         {state.step === 'downloading' ? (
           <MediaCard probe={state.probe} selected={state.choice.index} audioPreview={state.choice.kind === 'audio'}>
-            <DownloadProgress state={state} destination={destination(settings, state.probe)} onCancel={onCancel} />
+            <DownloadProgress
+              state={state}
+              destination={hosted ? undefined : destination(settings, state.probe)}
+              onCancel={onCancel}
+            />
           </MediaCard>
         ) : null}
 
@@ -362,7 +369,9 @@ export function App() {
                 <p className="done-title">
                   {state.probe.kind === 'playlist'
                     ? `${state.count} ${state.count === 1 ? 'file' : 'files'} saved`
-                    : 'Saved'}
+                    : hosted
+                      ? 'Ready'
+                      : 'Saved'}
                 </p>
                 <p className="muted">
                   <span className="path" title={state.path}>{shortPath(state.path, 60)}</span>
@@ -372,10 +381,16 @@ export function App() {
                 </p>
               </div>
               <div className="done-actions">
-                <button className="button" type="button" onClick={() => void revealJob(state.jobId)}>
-                  <Folder /> {settings?.revealLabel ?? 'Show in folder'}
-                </button>
-                <button className="button primary" type="button" onClick={reset}>
+                {hosted ? (
+                  <a className="button primary" href={fileUrl(state.jobId)} download>
+                    Save file
+                  </a>
+                ) : (
+                  <button className="button" type="button" onClick={() => void revealJob(state.jobId)}>
+                    <Folder /> {settings?.revealLabel ?? 'Show in folder'}
+                  </button>
+                )}
+                <button className={hosted ? 'button' : 'button primary'} type="button" onClick={reset}>
                   Download another
                 </button>
               </div>
@@ -385,7 +400,9 @@ export function App() {
       </main>
 
       <footer className="footer">
-        Powered by yt-dlp · Runs entirely on your computer — no accounts, no uploads
+        {hosted
+          ? 'Powered by yt-dlp · Only download what you have the right to keep'
+          : 'Powered by yt-dlp · Runs entirely on your computer — no accounts, no uploads'}
       </footer>
     </div>
   )
@@ -522,7 +539,7 @@ function DownloadProgress({
   onCancel,
 }: {
   state: Extract<State, {step: 'downloading'}>
-  destination: string
+  destination?: string
   onCancel: () => void
 }) {
   const {progress, item, processing, refreshing, choice, probe} = state
@@ -582,7 +599,11 @@ function DownloadProgress({
         </button>
       </div>
       <p className="target">
-        <Folder /> <span className="path" title={destination}>{shortPath(destination, 60)}</span>
+        {destination ? (
+          <>
+            <Folder /> <span className="path" title={destination}>{shortPath(destination, 60)}</span>
+          </>
+        ) : null}
         {probe.kind === 'playlist' && state.saved > 0 ? <span className="muted"> · {state.saved} saved</span> : null}
       </p>
     </div>

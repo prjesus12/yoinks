@@ -119,6 +119,33 @@ The server only listens on `127.0.0.1` and refuses requests from other
 websites, so nothing outside your own browser can drive it. `--port`
 picks another port; `--no-open` skips opening the browser.
 
+## Host it online
+
+yoinks also runs as a public website. It needs a real server (it runs
+yt-dlp and ffmpeg), so static hosts like GitHub Pages or Netlify won't
+work — use anything that runs Docker or Node: Railway, Render, Fly.io, a VPS.
+
+```sh
+docker build -t yoinks .
+docker run -p 8080:8080 -e YOINKS_PASSWORD=choose-one yoinks
+```
+
+Or without Docker (Node 18+ and ffmpeg installed): `npm run build && npm run start:hosted`.
+
+In this mode files are sent to the visitor's browser instead of saved to
+disk, and deleted from the server after a few minutes. Playlists are off.
+
+| variable | default | what it does |
+| --- | --- | --- |
+| `PORT` | `4455` | port to listen on (`8080` in the Docker image) |
+| `YOINKS_PASSWORD` | none | ask for this password before anything works — **set it**, an open downloader gets abused fast |
+| `YOINKS_MAX_JOBS` | `3` | downloads running at once |
+| `YOINKS_FILE_TTL` | `15` | minutes finished files are kept |
+
+`/healthz` answers `ok` for health checks. Heads-up: YouTube often blocks
+datacenter IPs, so a cloud host may hit "sign in to confirm you're not a
+bot" where your own computer doesn't.
+
 ## How it works
 
 - Powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp). On first run,

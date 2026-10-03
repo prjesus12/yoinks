@@ -1,5 +1,6 @@
 import {spawn} from 'node:child_process'
-import {randomUUID} from 'node:crypto'
+import {randomUUID, timingSafeEqual} from 'node:crypto'
+import {createReadStream} from 'node:fs'
 import fs from 'node:fs/promises'
 import http from 'node:http'
 import {createRequire} from 'node:module'
@@ -30,6 +31,15 @@ import * as desktop from './desktop.js'
 import type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from './types.js'
 
 export type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from './types.js'
+
+export type HostedOptions = {
+  /** When set, every request needs this password (HTTP basic auth, any username). */
+  password?: string
+  /** Downloads running at once, across all visitors. */
+  maxJobs: number
+  /** Finished files are deleted after this long. */
+  fileTtlMs: number
+}
 
 /** OS integration — the desktop app swaps in Electron's native versions. */
 export type Desktop = {
@@ -71,6 +81,8 @@ type Job = {
   saved: number
   /** The file, or the playlist's folder, once it's done. */
   result?: {path: string; isFolder: boolean}
+  /** Hosted mode: the job's private scratch folder, deleted with the job. */
+  dir?: string
   finished: boolean
   createdAt: number
 }
@@ -79,6 +91,8 @@ const probes = new Map<string, Probe>()
 const jobs = new Map<string, Job>()
 /** Where downloads land — like the terminal UI, straight onto disk. */
 let outDir = path.join(os.homedir(), 'Downloads')
+/** Public-hosting mode: files go to the visitor's browser, not to this disk. */
+let hosted: HostedOptions | undefined
 let osHooks: Desktop = {
   chooseFolder: desktop.chooseFolder,
   reveal: desktop.reveal,
@@ -92,6 +106,7 @@ const settingsView = (): Settings => ({
   outDir: prettyPath(outDir),
   canChooseFolder: osHooks.canChooseFolder,
   revealLabel: osHooks.revealLabel,
+  hosted: Boolean(hosted),
 })
 
 // ---------------------------------------------------------------------------
@@ -231,7 +246,7 @@ function probeView(probe: Probe): ProbeView {
     thumbnail: thumbnailOf(info),
     count: playlist ? playlistSize(info) : undefined,
     folder: playlist ? playlistFolderName(info) : undefined,
-    playlistUrl: playlist ? undefined : playlistUrlFor(probe.url),
+    playlistUrl: playlist || hosted ? undefined : playlistUrlFor(probe.url),
     choices: probe.choices.map((choice, index) => choiceView(choice, index)),
   }
 }
@@ -275,8 +290,9 @@ async function runJob(job: Job, probe: Probe, choice: DownloadChoice) {
   const {signal} = job.controller
   try {
     const ffmpegLocation = await findFfmpeg()
-    await fs.mkdir(outDir, {recursive: true})
-    const base = {ytdlp: await getYtDlp(), ffmpegLocation, url: probe.url, choice, outDir}
+    const target = job.dir ?? outDir
+    await fs.mkdir(target, {recursive: true})
+    const base = {ytdlp: await getYtDlp(), ffmpegLocation, url: probe.url, choice, outDir: target}
     let result: DownloadResult
     try {
       result = await download({...base, infoJsonPath: probe.infoJsonPath}, handlers, signal)
@@ -286,9 +302,14 @@ async function runJob(job: Job, probe: Probe, choice: DownloadChoice) {
       emit(job, {type: 'refreshing'})
       result = await download(base, handlers, signal)
     }
-    addToHistory(probe.url)
+    if (!hosted) addToHistory(probe.url)
     job.result = {path: result.filepath, isFolder: Boolean(choice.playlistFolder)}
-    emit(job, {type: 'done', count: result.count, failed: result.failed, path: prettyPath(result.filepath)})
+    emit(job, {
+      type: 'done',
+      count: result.count,
+      failed: result.failed,
+      path: hosted ? path.basename(result.filepath) : prettyPath(result.filepath),
+    })
   } catch (error) {
     if (signal.aborted) return
     const message = error instanceof Error ? error.message : String(error)
@@ -309,11 +330,12 @@ export const activeDownloads = () => [...jobs.values()].filter(job => !job.finis
 function dropJob(job: Job) {
   job.controller.abort()
   jobs.delete(job.id)
+  if (job.dir) void fs.rm(job.dir, {recursive: true, force: true})
   for (const res of job.listeners) res.end()
 }
 
 function sweep() {
-  const cutoff = Date.now() - TTL
+  const cutoff = Date.now() - (hosted?.fileTtlMs ?? TTL)
   for (const probe of probes.values()) {
     if (probe.createdAt < cutoff) {
       probes.delete(probe.id)
@@ -349,6 +371,25 @@ const isLocalHost = (host: string) => ['localhost', '127.0.0.1', '[::1]'].includ
  */
 function checkRequest(req: http.IncomingMessage) {
   const host = (req.headers.host ?? '').replace(/:\d+$/, '')
+  if (hosted) {
+    // public server: the DNS-rebinding check doesn't apply, but other
+    // websites still mustn't drive the API — the Origin must be this site
+    const origin = req.headers.origin
+    if (origin) {
+      let originHost = ''
+      try {
+        originHost = new URL(origin).host
+      } catch {
+        // unparseable origin — rejected below
+      }
+      const own = [req.headers.host, req.headers['x-forwarded-host']].flat().filter(Boolean)
+      if (!own.includes(originHost)) throw new HttpError(403, 'forbidden origin')
+    }
+    if (req.method === 'POST' && !req.headers['content-type']?.startsWith('application/json')) {
+      throw new HttpError(415, 'expected application/json')
+    }
+    return
+  }
   if (!isLocalHost(host)) throw new HttpError(403, 'forbidden host')
   const origin = req.headers.origin
   if (origin) {
@@ -363,6 +404,25 @@ function checkRequest(req: http.IncomingMessage) {
   if (req.method === 'POST' && !req.headers['content-type']?.startsWith('application/json')) {
     throw new HttpError(415, 'expected application/json')
   }
+}
+
+function safeEqual(a: string, b: string) {
+  const x = Buffer.from(a)
+  const y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
+
+/** Hosted + password: HTTP basic auth, so the browser asks once and remembers. */
+function checkPassword(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  if (!hosted?.password) return true
+  const header = req.headers.authorization ?? ''
+  if (header.startsWith('Basic ')) {
+    const decoded = Buffer.from(header.slice(6), 'base64').toString()
+    if (safeEqual(decoded.slice(decoded.indexOf(':') + 1), hosted.password)) return true
+  }
+  res.writeHead(401, {'www-authenticate': 'Basic realm="yoinks", charset="UTF-8"'})
+  res.end('password required')
+  return false
 }
 
 async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
@@ -394,6 +454,10 @@ async function handleProbe(req: http.IncomingMessage, res: http.ServerResponse) 
     throw new HttpError(422, message)
   }
   const {info, infoJsonPath} = result
+  if (hosted && isPlaylist(info)) {
+    void fs.rm(infoJsonPath, {force: true})
+    throw new HttpError(422, 'Playlists aren’t supported on this server — paste a single video or song.')
+  }
   const entry: Probe = {
     id: randomUUID(),
     url: url.trim(),
@@ -423,6 +487,10 @@ async function handleDownload(req: http.IncomingMessage, res: http.ServerRespons
     finished: false,
     createdAt: Date.now(),
   }
+  if (hosted) {
+    if (activeDownloads() >= hosted.maxJobs) throw new HttpError(429, 'The server is busy — try again in a minute.')
+    job.dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yoinks-'))
+  }
   jobs.set(job.id, job)
   void runJob(job, entry, choice)
   sendJson(res, 200, {jobId: job.id})
@@ -444,6 +512,26 @@ function handleEvents(job: Job, res: http.ServerResponse) {
   job.listeners.add(res)
   res.on('close', () => job.listeners.delete(res))
 }
+
+async function handleFile(job: Job, res: http.ServerResponse) {
+  if (!hosted || !job.result || job.result.isFolder) throw new HttpError(409, 'nothing to download')
+  const {path: file} = job.result
+  const size = (await fs.stat(file).catch(() => undefined))?.size
+  if (size === undefined) throw new HttpError(410, 'That file expired — yoink it again.')
+  const name = path.basename(file)
+  res.writeHead(200, {
+    'content-type': FILE_MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': size,
+    'content-disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    'cache-control': 'no-store',
+  })
+  const stream = createReadStream(file)
+  stream.on('error', () => res.destroy())
+  res.on('close', () => stream.destroy())
+  stream.pipe(res)
+}
+
+const FILE_MIME: Record<string, string> = {'.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4'}
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -481,10 +569,18 @@ async function serveStatic(pathname: string, res: http.ServerResponse) {
 }
 
 async function route(req: http.IncomingMessage, res: http.ServerResponse) {
-  checkRequest(req)
   const {pathname} = new URL(req.url ?? '/', 'http://localhost')
+  if (hosted && pathname === '/healthz') {
+    res.writeHead(200, {'content-type': 'text/plain'}).end('ok')
+    return
+  }
+  checkRequest(req)
+  if (!checkPassword(req, res)) return
 
   if (pathname === '/api/settings' && req.method === 'GET') return sendJson(res, 200, settingsView())
+  if (hosted && /^\/api\/(choose-folder|components\/(check|update|auto-update))$/.test(pathname)) {
+    throw new HttpError(403, 'not available on this server')
+  }
   if (pathname === '/api/choose-folder' && req.method === 'POST') {
     await readJson(req)
     // opens the OS folder dialog on this machine; resolves when it's closed
@@ -521,7 +617,7 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse) {
   if (pathname === '/api/probe' && req.method === 'POST') return handleProbe(req, res)
   if (pathname === '/api/download' && req.method === 'POST') return handleDownload(req, res)
 
-  const jobMatch = /^\/api\/jobs\/([\w-]+)(\/events|\/reveal)?$/.exec(pathname)
+  const jobMatch = /^\/api\/jobs\/([\w-]+)(\/events|\/reveal|\/file)?$/.exec(pathname)
   if (jobMatch) {
     const job = jobs.get(jobMatch[1]!)
     // finished jobs clean up after themselves, so a late cancel is already done
@@ -536,6 +632,7 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse) {
       return
     }
     if (req.method === 'GET' && jobMatch[2] === '/events') return handleEvents(job, res)
+    if (req.method === 'GET' && jobMatch[2] === '/file') return handleFile(job, res)
     if (req.method === 'POST' && jobMatch[2] === '/reveal') {
       await readJson(req)
       if (!job.result) throw new HttpError(409, 'not finished yet')
@@ -566,6 +663,8 @@ export async function startWebServer({
   outDir: requestedOutDir,
   preferManagedYtDlp = false,
   desktop: hooks,
+  hosted: hostedOptions,
+  host,
 }: {
   /** 0 picks any free port. */
   port?: number
@@ -574,7 +673,12 @@ export async function startWebServer({
   /** Desktop app: always use (and keep updating) yoinks' own yt-dlp. */
   preferManagedYtDlp?: boolean
   desktop?: Partial<Desktop>
+  /** Serve the public: bind to every interface, hand files to the browser. */
+  hosted?: HostedOptions
+  /** Interface to listen on (hosted defaults to all of them). */
+  host?: string
 } = {}): Promise<string> {
+  hosted = hostedOptions
   const stored = await loadStored()
   const savedOutDir = stored.outDir && (await fs.stat(stored.outDir).catch(() => undefined))?.isDirectory()
   // -o wins for this run; otherwise the folder picked last time, else ~/Downloads
@@ -605,14 +709,14 @@ export async function startWebServer({
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject)
         // loopback only: this server runs yt-dlp and writes files
-        server.listen(bound, '127.0.0.1', () => {
+        server.listen(bound, host ?? (hosted ? '0.0.0.0' : '127.0.0.1'), () => {
           server.off('error', reject)
           resolve()
         })
       })
       break
     } catch (error) {
-      if (port === 0 || (error as NodeJS.ErrnoException).code !== 'EADDRINUSE' || bound >= port + 20) throw error
+      if (hosted || port === 0 || (error as NodeJS.ErrnoException).code !== 'EADDRINUSE' || bound >= port + 20) throw error
     }
   }
   if (port === 0) bound = (server.address() as {port: number}).port

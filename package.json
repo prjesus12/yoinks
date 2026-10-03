@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "start": "node dist/cli.js",
     "web": "node dist/cli.js --web",
+    "start:hosted": "node dist/server.js",
     "app": "npm run build && electron dist/electron-main.js",
     "dist:app": "npm run build && electron-builder",
     "prepublishOnly": "npm test && npm run typecheck && npm run build"
