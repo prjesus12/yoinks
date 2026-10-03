@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 // the web app; `yoinks --web` serves the build from dist/web
 export default defineConfig({
 	root: "web",
-	base: "/downloader/",
+	base: "./", // relative, so it works at / and under /downloader/
 	plugins: [react()],
 	build: { outDir: "../dist/web", emptyOutDir: true },
 	server: {

@@ -19,42 +19,42 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function getSettings(): Promise<Settings> {
-  const res = await fetch('/api/settings')
+  const res = await fetch('api/settings')
   if (!res.ok) throw new Error('Can’t reach yoinks. Is `yoinks --web` still running?')
   return (await res.json()) as Settings
 }
 
 /** Opens the system folder dialog on this computer; resolves once it closes. */
-export const chooseFolder = () => post<Settings>('/api/choose-folder', {})
+export const chooseFolder = () => post<Settings>('api/choose-folder', {})
 
 /** Hosted mode: where the browser fetches the finished file. */
-export const fileUrl = (jobId: string) => `/api/jobs/${jobId}/file`
+export const fileUrl = (jobId: string) => `api/jobs/${jobId}/file`
 
 export const revealJob = (jobId: string) =>
-  fetch(`/api/jobs/${jobId}/reveal`, {
+  fetch(`api/jobs/${jobId}/reveal`, {
     method: 'POST',
     headers: {'content-type': 'application/json'},
     body: '{}',
   }).catch(() => {})
 
 export async function getComponents(): Promise<ComponentsView> {
-  const res = await fetch('/api/components')
+  const res = await fetch('api/components')
   if (!res.ok) throw new Error('Can’t reach yoinks.')
   return (await res.json()) as ComponentsView
 }
 
-export const checkForUpdates = () => post<ComponentsView>('/api/components/check', {})
-export const updateYtDlp = () => post<ComponentsView>('/api/components/update', {})
-export const setAutoUpdate = (enabled: boolean) => post<ComponentsView>('/api/components/auto-update', {enabled})
+export const checkForUpdates = () => post<ComponentsView>('api/components/check', {})
+export const updateYtDlp = () => post<ComponentsView>('api/components/update', {})
+export const setAutoUpdate = (enabled: boolean) => post<ComponentsView>('api/components/auto-update', {enabled})
 
-export const probeUrl = (url: string) => post<ProbeView>('/api/probe', {url})
+export const probeUrl = (url: string) => post<ProbeView>('api/probe', {url})
 
 export const startDownload = (probeId: string, choice: number) =>
-  post<{jobId: string}>('/api/download', {probeId, choice}).then(r => r.jobId)
+  post<{jobId: string}>('api/download', {probeId, choice}).then(r => r.jobId)
 
 export function dropJob(jobId: string) {
   // best effort — the server sweeps leftovers on its own
-  void fetch(`/api/jobs/${jobId}`, {method: 'DELETE'}).catch(() => {})
+  void fetch(`api/jobs/${jobId}`, {method: 'DELETE'}).catch(() => {})
 }
 
 /**
@@ -62,7 +62,7 @@ export function dropJob(jobId: string) {
  * EventSource would reconnect forever, so the terminal events close it.
  */
 export function followJob(jobId: string, onEvent: (event: JobEvent) => void): () => void {
-  const source = new EventSource(`/api/jobs/${jobId}/events`)
+  const source = new EventSource(`api/jobs/${jobId}/events`)
   let closed = false
   const close = () => {
     closed = true
