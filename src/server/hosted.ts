@@ -5,6 +5,7 @@ import {startWebServer} from './server.js'
 //   YOINKS_PASSWORD  require this password (HTTP basic auth) — strongly advised
 //   YOINKS_MAX_JOBS  downloads at once (default 3)
 //   YOINKS_FILE_TTL  minutes finished files are kept (default 15)
+//   YOINKS_MAX_PLAYLIST  longest playlist accepted (default 50)
 
 const int = (value: string | undefined, fallback: number) => {
   const n = Number(value)
@@ -18,6 +19,7 @@ const url = await startWebServer({
     password: process.env.YOINKS_PASSWORD || undefined,
     maxJobs: int(process.env.YOINKS_MAX_JOBS, 3),
     fileTtlMs: int(process.env.YOINKS_FILE_TTL, 15) * 60 * 1000,
+    maxPlaylist: int(process.env.YOINKS_MAX_PLAYLIST, 50),
   },
 })
 console.log(`yoinks (hosted) → ${url}${process.env.YOINKS_PASSWORD ? ' · password protected' : ' · NO PASSWORD SET'}`)

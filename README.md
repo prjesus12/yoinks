@@ -133,7 +133,8 @@ docker run -p 8080:8080 -e YOINKS_PASSWORD=choose-one yoinks
 Or without Docker (Node 18+ and ffmpeg installed): `npm run build && npm run start:hosted`.
 
 In this mode files are sent to the visitor's browser instead of saved to
-disk, and deleted from the server after a few minutes. Playlists are off.
+disk, and deleted from the server after a few minutes. Playlists come as a single
+`.zip` (store-only, so tracks aren't re-compressed).
 
 | variable | default | what it does |
 | --- | --- | --- |
@@ -141,6 +142,7 @@ disk, and deleted from the server after a few minutes. Playlists are off.
 | `YOINKS_PASSWORD` | none | ask for this password before anything works — **set it**, an open downloader gets abused fast |
 | `YOINKS_MAX_JOBS` | `3` | downloads running at once |
 | `YOINKS_FILE_TTL` | `15` | minutes finished files are kept |
+| `YOINKS_MAX_PLAYLIST` | `50` | longest playlist accepted |
 
 `/healthz` answers `ok` for health checks. Heads-up: YouTube often blocks
 datacenter IPs, so a cloud host may hit "sign in to confirm you're not a

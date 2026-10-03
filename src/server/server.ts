@@ -28,6 +28,7 @@ import {
 } from '../lib/ytdlp.js'
 import {ffmpegView, isNewer, latestYtDlpVersion, loadStored, saveStored, ytDlpVersion} from './components.js'
 import * as desktop from './desktop.js'
+import {listFiles, writeZip, zipSize} from './zip.js'
 import type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from './types.js'
 
 export type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from './types.js'
@@ -39,6 +40,8 @@ export type HostedOptions = {
   maxJobs: number
   /** Finished files are deleted after this long. */
   fileTtlMs: number
+  /** Longest playlist offered. */
+  maxPlaylist: number
 }
 
 /** OS integration — the desktop app swaps in Electron's native versions. */
@@ -246,7 +249,7 @@ function probeView(probe: Probe): ProbeView {
     thumbnail: thumbnailOf(info),
     count: playlist ? playlistSize(info) : undefined,
     folder: playlist ? playlistFolderName(info) : undefined,
-    playlistUrl: playlist || hosted ? undefined : playlistUrlFor(probe.url),
+    playlistUrl: playlist ? undefined : playlistUrlFor(probe.url),
     choices: probe.choices.map((choice, index) => choiceView(choice, index)),
   }
 }
@@ -454,9 +457,9 @@ async function handleProbe(req: http.IncomingMessage, res: http.ServerResponse) 
     throw new HttpError(422, message)
   }
   const {info, infoJsonPath} = result
-  if (hosted && isPlaylist(info)) {
+  if (hosted && isPlaylist(info) && playlistSize(info) > hosted.maxPlaylist) {
     void fs.rm(infoJsonPath, {force: true})
-    throw new HttpError(422, 'Playlists aren’t supported on this server — paste a single video or song.')
+    throw new HttpError(422, `That playlist has ${playlistSize(info)} items — this server takes up to ${hosted.maxPlaylist}.`)
   }
   const entry: Probe = {
     id: randomUUID(),
@@ -514,18 +517,32 @@ function handleEvents(job: Job, res: http.ServerResponse) {
 }
 
 async function handleFile(job: Job, res: http.ServerResponse) {
-  if (!hosted || !job.result || job.result.isFolder) throw new HttpError(409, 'nothing to download')
-  const {path: file} = job.result
-  const size = (await fs.stat(file).catch(() => undefined))?.size
-  if (size === undefined) throw new HttpError(410, 'That file expired — yoink it again.')
-  const name = path.basename(file)
-  res.writeHead(200, {
-    'content-type': FILE_MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
+  if (!hosted || !job.result) throw new HttpError(409, 'nothing to download')
+  const {path: target, isFolder} = job.result
+  const gone = new HttpError(410, 'That file expired — yoink it again.')
+  const headers = (name: string, type: string, size?: number) => ({
+    'content-type': type,
+    ...(size === undefined ? {} : {'content-length': size}),
     'content-disposition': `attachment; filename="${name.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
     'cache-control': 'no-store',
   })
-  const stream = createReadStream(file)
+
+  if (isFolder) {
+    // a playlist: one zip of the album folder, built as it streams
+    const names = await listFiles(target).catch(() => [])
+    if (names.length === 0) throw gone
+    const size = await zipSize(target, names)
+    if (size === undefined) throw new HttpError(413, 'That playlist is too big to zip.')
+    res.writeHead(200, headers(`${path.basename(target)}.zip`, 'application/zip', size))
+    res.on('close', () => res.destroy())
+    await writeZip(target, names, res, () => res.destroyed).catch(() => res.destroy())
+    return
+  }
+
+  const size = (await fs.stat(target).catch(() => undefined))?.size
+  if (size === undefined) throw gone
+  res.writeHead(200, headers(path.basename(target), FILE_MIME[path.extname(target).toLowerCase()] ?? 'application/octet-stream', size))
+  const stream = createReadStream(target)
   stream.on('error', () => res.destroy())
   res.on('close', () => stream.destroy())
   stream.pipe(res)

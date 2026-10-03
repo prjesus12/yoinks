@@ -252,7 +252,7 @@ export function App() {
           <h1>Save video and music from anywhere.</h1>
           <p className="lede">
             {hosted
-              ? 'YouTube, X, Instagram, TikTok and 1,800+ sites. Paste a link, pick a format, save the file.'
+              ? 'YouTube, X, Instagram, TikTok and 1,800+ sites. Playlists arrive as one zip — an album, with cover art on every track.'
               : 'YouTube, X, Instagram, TikTok and 1,800+ sites. Playlists arrive as albums — a folder per album, with cover art on every track.'}
           </p>
         </section>
@@ -368,7 +368,7 @@ export function App() {
               <div className="done-text">
                 <p className="done-title">
                   {state.probe.kind === 'playlist'
-                    ? `${state.count} ${state.count === 1 ? 'file' : 'files'} saved`
+                    ? `${state.count} ${state.count === 1 ? 'file' : 'files'} ${hosted ? 'ready' : 'saved'}`
                     : hosted
                       ? 'Ready'
                       : 'Saved'}
@@ -383,7 +383,7 @@ export function App() {
               <div className="done-actions">
                 {hosted ? (
                   <a className="button primary" href={fileUrl(state.jobId)} download>
-                    Save file
+                    {state.probe.kind === 'playlist' ? 'Save .zip' : 'Save file'}
                   </a>
                 ) : (
                   <button className="button" type="button" onClick={() => void revealJob(state.jobId)}>
