@@ -1,0 +1,27 @@
+[Unit]
+Description=yoinks (hosted)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/yoinks
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=3
+
+# yt-dlp, cookies and settings live here (created by systemd, owned by User)
+StateDirectory=yoinks
+Environment=HOME=/var/lib/yoinks
+
+Environment=NODE_ENV=production
+Environment=PORT=4455
+Environment=YOINKS_PASSWORD=CAMBIA_ESTA_CONTRASEÑA
+# Environment=YOINKS_MAX_JOBS=3
+# Environment=YOINKS_FILE_TTL=15
+# Environment=YOINKS_MAX_PLAYLIST=50
+# Environment=YOINKS_PROXY=http://usuario:clave@host:puerto
+
+[Install]
+WantedBy=multi-user.target
