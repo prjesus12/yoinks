@@ -7,6 +7,7 @@ import {createRequire} from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import {fileURLToPath} from 'node:url'
+import {EXTRA_ARGS} from '../lib/ytdlp.js'
 import {addToHistory} from '../lib/history.js'
 import {detectPlatform, isProbablyUrl, playlistUrlFor} from '../lib/platforms.js'
 import {
@@ -42,6 +43,8 @@ export type HostedOptions = {
   fileTtlMs: number
   /** Longest playlist offered. */
   maxPlaylist: number
+  /** Cookies to start with, if none were uploaded yet. */
+  cookiesFile?: string
 }
 
 /** OS integration — the desktop app swaps in Electron's native versions. */
@@ -55,6 +58,8 @@ export type Desktop = {
 const DEFAULT_PORT = 4455
 const TTL = 60 * 60 * 1000 // probes and finished jobs are dropped after an hour
 const MAX_BODY = 16 * 1024
+const MAX_COOKIES = 512 * 1024
+const COOKIES_FILE = path.join(os.homedir(), '.config', 'yoinks', 'cookies.txt')
 const DAY = 24 * 60 * 60 * 1000
 
 let APP_VERSION = 'dev'
@@ -110,7 +115,53 @@ const settingsView = (): Settings => ({
   canChooseFolder: osHooks.canChooseFolder,
   revealLabel: osHooks.revealLabel,
   hosted: Boolean(hosted),
+  cookies: hosted ? {set: cookies.updatedAt !== undefined, updatedAt: cookies.updatedAt, canEdit: Boolean(hosted.password)} : undefined,
 })
+
+// ---------------------------------------------------------------------------
+// hosted: YouTube cookies, uploaded from the page and kept on disk (0600)
+
+const cookies = {updatedAt: undefined as number | undefined}
+
+function useCookies(file: string | undefined) {
+  const at = EXTRA_ARGS.indexOf('--cookies')
+  if (at >= 0) EXTRA_ARGS.splice(at, 2)
+  if (file) EXTRA_ARGS.push('--cookies', file)
+}
+
+async function loadCookies(seed?: string) {
+  let stat = await fs.stat(COOKIES_FILE).catch(() => undefined)
+  if (!stat && seed) {
+    await fs.mkdir(path.dirname(COOKIES_FILE), {recursive: true})
+    await fs.copyFile(seed, COOKIES_FILE)
+    await fs.chmod(COOKIES_FILE, 0o600)
+    stat = await fs.stat(COOKIES_FILE)
+  }
+  cookies.updatedAt = stat?.mtimeMs
+  useCookies(stat ? COOKIES_FILE : undefined)
+}
+
+async function handleCookies(req: http.IncomingMessage, res: http.ServerResponse) {
+  if (!hosted?.password) throw new HttpError(403, 'Set YOINKS_PASSWORD on the server to manage cookies here.')
+  if (req.method === 'DELETE') {
+    await fs.rm(COOKIES_FILE, {force: true})
+    cookies.updatedAt = undefined
+    useCookies(undefined)
+    return sendJson(res, 200, settingsView())
+  }
+  const {text} = await readJson(req, MAX_COOKIES)
+  const looksRight =
+    typeof text === 'string' && text.split(/\r?\n/).some(line => !line.startsWith('#') && line.split('\t').length === 7)
+  if (!looksRight) {
+    throw new HttpError(400, 'That doesn’t look like a cookies.txt file (Netscape format).')
+  }
+  await fs.mkdir(path.dirname(COOKIES_FILE), {recursive: true})
+  await fs.writeFile(COOKIES_FILE, text as string, {mode: 0o600})
+  await fs.chmod(COOKIES_FILE, 0o600)
+  cookies.updatedAt = Date.now()
+  useCookies(COOKIES_FILE)
+  return sendJson(res, 200, settingsView())
+}
 
 // ---------------------------------------------------------------------------
 // yt-dlp: found once, shared by every probe and download, updatable in place
@@ -428,11 +479,11 @@ function checkPassword(req: http.IncomingMessage, res: http.ServerResponse): boo
   return false
 }
 
-async function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+async function readJson(req: http.IncomingMessage, max = MAX_BODY): Promise<Record<string, unknown>> {
   let body = ''
   for await (const chunk of req) {
     body += chunk
-    if (body.length > MAX_BODY) throw new HttpError(413, 'request too large')
+    if (body.length > max) throw new HttpError(413, 'request too large')
   }
   try {
     const parsed: unknown = JSON.parse(body)
@@ -598,6 +649,9 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse) {
   if (hosted && /^\/api\/(choose-folder|components\/(check|update|auto-update))$/.test(pathname)) {
     throw new HttpError(403, 'not available on this server')
   }
+  if (hosted && pathname === '/api/cookies' && (req.method === 'POST' || req.method === 'DELETE')) {
+    return handleCookies(req, res)
+  }
   if (pathname === '/api/choose-folder' && req.method === 'POST') {
     await readJson(req)
     // opens the OS folder dialog on this machine; resolves when it's closed
@@ -696,6 +750,7 @@ export async function startWebServer({
   host?: string
 } = {}): Promise<string> {
   hosted = hostedOptions
+  if (hosted) await loadCookies(hosted.cookiesFile)
   const stored = await loadStored()
   const savedOutDir = stored.outDir && (await fs.stat(stored.outDir).catch(() => undefined))?.isDirectory()
   // -o wins for this run; otherwise the folder picked last time, else ~/Downloads

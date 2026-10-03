@@ -210,6 +210,17 @@ export function App() {
   }
 
   const hosted = Boolean(settings?.hosted)
+  // YouTube's bot check — hosted servers fix it with uploaded cookies
+  const needsCookies = (message: string) =>
+    hosted && Boolean(settings?.cookies?.canEdit) && /confirm you.re not a bot/i.test(message)
+  const cookiesLink = (
+    <>
+      {' '}
+      <button type="button" className="link" onClick={() => setSettingsOpen(true)}>
+        Add cookies
+      </button>
+    </>
+  )
   const busy = state.step === 'probing' || state.step === 'downloading'
 
   return (
@@ -224,7 +235,7 @@ export function App() {
               <span className="dot" aria-hidden /> Running on this computer
             </span>
           )}
-          {hosted ? null : <button
+          {hosted && !settings?.cookies?.canEdit ? null : <button
             type="button"
             className="icon-button"
             onClick={() => setSettingsOpen(true)}
@@ -245,6 +256,7 @@ export function App() {
         choosing={choosing}
         components={components}
         onComponents={setComponents}
+        onSettings={setSettings}
       />
 
       <main className="main">
@@ -287,7 +299,12 @@ export function App() {
           </button>
         </form>
 
-        {state.step === 'idle' && state.error ? <p className="alert" role="alert">{state.error}</p> : null}
+        {state.step === 'idle' && state.error ? (
+          <p className="alert" role="alert">
+            {state.error}
+            {needsCookies(state.error) ? cookiesLink : null}
+          </p>
+        ) : null}
         {installing && (state.step === 'idle' || state.step === 'probing') ? (
           <p className="notice" role="status">
             <Spinner /> Getting yt-dlp ready — this only happens the first time.
@@ -303,7 +320,12 @@ export function App() {
             audioPreview={state.probe.choices[selected]?.kind === 'audio'}
             footer={
               <>
-                {state.error ? <p className="alert inline" role="alert">{state.error}</p> : null}
+                {state.error ? (
+                  <p className="alert inline" role="alert">
+                    {state.error}
+                    {needsCookies(state.error) ? cookiesLink : null}
+                  </p>
+                ) : null}
                 <div className="actions">
                   {hosted ? <div className="destination" /> : <div className="destination">
                     <span className="destination-label">Saves to</span>

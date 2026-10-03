@@ -169,6 +169,9 @@ export async function findFfmpeg(): Promise<string | undefined> {
  */
 export const CHALLENGE_ARGS = ['--remote-components', 'ejs:github', '--js-runtimes', `node:${process.execPath}`]
 
+/** Extra yt-dlp flags for every run (the hosted server's cookies and proxy). */
+export const EXTRA_ARGS: string[] = []
+
 export type VideoInfo = {
   _type?: string
   title: string
@@ -267,7 +270,7 @@ export async function probe(ytdlp: string, url: string, signal?: AbortSignal): P
   const stdout = await new Promise<string>((resolve, reject) => {
     // --flat-playlist lists a playlist's entries without extracting every
     // video (seconds instead of minutes); single videos are unaffected
-    const child = spawn(ytdlp, ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', ...CHALLENGE_ARGS, url], {
+    const child = spawn(ytdlp, ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', ...CHALLENGE_ARGS, ...EXTRA_ARGS, url], {
       signal,
       env: childEnv,
     })
@@ -532,6 +535,7 @@ export function download(
     ...(opts.infoJsonPath && !playlist ? ['--load-info-json', opts.infoJsonPath] : [opts.url]),
     ...opts.choice.args,
     ...CHALLENGE_ARGS,
+    ...EXTRA_ARGS,
     // one unavailable video shouldn't sink the whole playlist
     ...(playlist ? ['--yes-playlist', '--ignore-errors'] : ['--no-playlist']),
     '--no-warnings',

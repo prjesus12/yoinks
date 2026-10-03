@@ -1160,3 +1160,14 @@ html[data-shell] .main {
   font-size: 13px;
   color: var(--muted);
 }
+
+.alert button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

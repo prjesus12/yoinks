@@ -19,6 +19,13 @@ export type Settings = {
   revealLabel: string
   /** A public server: files are handed to the browser, nothing is saved on disk. */
   hosted: boolean
+  /** Hosted: YouTube cookies for yt-dlp, uploadable from the page. */
+  cookies?: {
+    set: boolean
+    updatedAt?: number
+    /** Only with a password set — otherwise anyone could swap them. */
+    canEdit: boolean
+  }
 }
 
 export type ProbeView = {

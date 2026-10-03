@@ -142,6 +142,8 @@ disk, and deleted from the server after a few minutes. Playlists come as a singl
 | `YOINKS_PASSWORD` | none | ask for this password before anything works — **set it**, an open downloader gets abused fast |
 | `YOINKS_MAX_JOBS` | `3` | downloads running at once |
 | `YOINKS_FILE_TTL` | `15` | minutes finished files are kept |
+| `YOINKS_COOKIES` | none | path to a Netscape `cookies.txt` — fixes YouTube's "confirm you're not a bot" |
+| `YOINKS_PROXY` | none | proxy for yt-dlp (`http://user:pass@host:port`) |
 | `YOINKS_MAX_PLAYLIST` | `50` | longest playlist accepted |
 
 `/healthz` answers `ok` for health checks. Heads-up: YouTube often blocks

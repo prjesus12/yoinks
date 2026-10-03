@@ -47,6 +47,16 @@ export const checkForUpdates = () => post<ComponentsView>('api/components/check'
 export const updateYtDlp = () => post<ComponentsView>('api/components/update', {})
 export const setAutoUpdate = (enabled: boolean) => post<ComponentsView>('api/components/auto-update', {enabled})
 
+/** Hosted: replace the YouTube cookies yt-dlp uses (needs the server password). */
+export const uploadCookies = (text: string) => post<Settings>('api/cookies', {text})
+
+export async function removeCookies(): Promise<Settings> {
+  const res = await fetch('api/cookies', {method: 'DELETE'})
+  const data = (await res.json().catch(() => ({}))) as Settings & {error?: string}
+  if (!res.ok) throw new Error(data.error ?? `Something went wrong (${res.status}).`)
+  return data
+}
+
 export const probeUrl = (url: string) => post<ProbeView>('api/probe', {url})
 
 export const startDownload = (probeId: string, choice: number) =>
