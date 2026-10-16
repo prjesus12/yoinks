@@ -1,0 +1,24 @@
+{
+  "name": "yoinks-expo",
+  "version": "0.1.0",
+  "description": "yoink videos from an Expo / React Native app, through a hosted yoinks server.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "files": [
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "scripts": {
+    "prepare": "cp ../src/server/types.ts src/types.ts",
+    "test": "tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "expo-file-system": ">=19"
+  },
+  "devDependencies": {
+    "expo-file-system": "^19.0.0",
+    "typescript": "^5.9.0"
+  },
+  "license": "MIT"
+}
