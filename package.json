@@ -10,13 +10,13 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsup && vite build",
     "dev": "tsup --watch",
     "dev:web": "vite",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test --test-force-exit src/**/*.test.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "lint": "oxlint .",
     "format": "prettier --write .",

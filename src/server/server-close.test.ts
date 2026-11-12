@@ -210,3 +210,10 @@ test('close() ends an open event stream, aborts the download and empties TMPDIR'
     await fake.resume()
   }
 })
+
+// `--test-force-exit` makes a passing run exit even with a socket still open,
+// so a leak after close() would otherwise go unnoticed.
+after(() => {
+  const listening = process.getActiveResourcesInfo().filter(resource => resource === 'TCPServerWrap')
+  assert.deepEqual(listening, [], 'a test left a server listening: --test-force-exit would hide this')
+})
