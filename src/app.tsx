@@ -16,12 +16,10 @@ import {formatBytes, formatDuration, formatEta, formatSpeed, shortenPath, trunca
 import {addToHistory, loadHistory} from './lib/history.js'
 import type {Preset} from './lib/args.js'
 import {detectPlatform, isProbablyUrl, playlistUrlFor, type Platform} from './lib/platforms.js'
+import {choicesFor, downloadWithFreshInfo} from './lib/engine.js'
 import {useMouseClick} from './lib/use-mouse-click.js'
 import {nextThemeMode, ThemeProvider, type ThemeMode, useTheme} from './theme.js'
 import {
-  buildChoices,
-  buildPlaylistChoices,
-  download,
   ensureYtDlp,
   findFfmpeg,
   isPlaylist,
@@ -216,7 +214,7 @@ function AppContent({
       if (controller.signal.aborted) return
       infoJsonRef.current = infoJsonPath
       setInfo(videoInfo)
-      setChoices(isPlaylist(videoInfo) ? buildPlaylistChoices(videoInfo) : buildChoices(videoInfo))
+      setChoices(choicesFor(videoInfo))
       highlightRef.current = 0
       setPhase({name: 'picking'})
     } catch (error) {
@@ -302,19 +300,11 @@ function AppContent({
       try {
         const ffmpegLocation = await findFfmpeg()
         const base = {ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir}
-        let result: DownloadResult
-        try {
-          // reuse the probe's metadata — starts immediately instead of re-extracting
-          result = await download({...base, infoJsonPath: infoJsonRef.current}, handlers, controller.signal)
-        } catch (error) {
-          // playlists always extract fresh, so there's nothing stale to retry
-          if (controller.signal.aborted || choice.playlistFolder) throw error
-          // media urls in the cached info can expire — retry with a fresh extraction
-          setPhase(prev =>
-            prev.name === 'downloading' ? {...prev, progress: undefined, refreshing: true} : prev,
-          )
-          result = await download(base, handlers, controller.signal)
-        }
+        const result = await downloadWithFreshInfo({...base, infoJsonPath: infoJsonRef.current}, handlers, {
+          signal: controller.signal,
+          onRefresh: () =>
+            setPhase(prev => (prev.name === 'downloading' ? {...prev, progress: undefined, refreshing: true} : prev)),
+        })
         onOutcome({filepath: result.filepath})
         setHistory(addToHistory(url))
         if (oneShot) {

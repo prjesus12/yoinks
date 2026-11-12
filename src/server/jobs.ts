@@ -3,7 +3,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {addToHistory} from '../lib/history.js'
-import {download, findFfmpeg, type DownloadChoice, type DownloadResult} from '../lib/ytdlp.js'
+import {downloadWithFreshInfo} from '../lib/engine.js'
+import {findFfmpeg, type DownloadChoice, type DownloadHandlers} from '../lib/ytdlp.js'
 import {getYtDlp} from './ytdlp-setup.js'
 import {prettyPath} from './views.js'
 import type {Job, Probe, ServerState} from './state.js'
@@ -26,8 +27,8 @@ function emit(job: Job, event: JobEvent) {
 }
 
 export async function runJob(state: ServerState, job: Job, probe: Probe, choice: DownloadChoice) {
-  const handlers = {
-    onProgress: (p: Parameters<Parameters<typeof download>[1]['onProgress']>[0]) =>
+  const handlers: DownloadHandlers = {
+    onProgress: p =>
       emit(job, {
         type: 'progress',
         downloaded: p.downloadedBytes,
@@ -50,15 +51,12 @@ export async function runJob(state: ServerState, job: Job, probe: Probe, choice:
     const target = job.dir ?? state.outDir
     await fs.mkdir(target, {recursive: true})
     const base = {ytdlp: await getYtDlp(state), ffmpegLocation, url: probe.url, choice, outDir: target}
-    let result: DownloadResult
-    try {
-      result = await download({...base, infoJsonPath: probe.infoJsonPath}, handlers, signal)
-    } catch (error) {
-      if (signal.aborted || choice.playlistFolder) throw error
-      // media urls in the cached info can expire — retry with a fresh extraction
-      emit(job, {type: 'refreshing'})
-      result = await download(base, handlers, signal)
-    }
+    const result = await downloadWithFreshInfo(
+      {...base, infoJsonPath: probe.infoJsonPath},
+      handlers,
+      // media urls in the cached info can expire — the policy retries fresh once
+      {signal, onRefresh: () => emit(job, {type: 'refreshing'})},
+    )
     if (!state.hosted) addToHistory(probe.url)
     job.result = {path: result.filepath, isFolder: Boolean(choice.playlistFolder)}
     emit(job, {

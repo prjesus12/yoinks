@@ -8,7 +8,8 @@ import os from 'node:os'
 import path from 'node:path'
 import {isProbablyUrl} from '../lib/platforms.js'
 import {assertPublicUrlResolved} from '../lib/ssrf.js'
-import {buildChoices, buildPlaylistChoices, isPlaylist, playlistSize, probe, PROBE_TIMEOUT_MS} from '../lib/ytdlp.js'
+import {choicesFor} from '../lib/engine.js'
+import {isPlaylist, playlistSize, probe, PROBE_TIMEOUT_MS} from '../lib/ytdlp.js'
 import {saveStored} from './components.js'
 import {dropJob, jobsRunning, runJob, sweep} from './jobs.js'
 import {checkLimits, checkPassword, checkRequest, HttpError, readJson, sendJson} from './security.js'
@@ -73,7 +74,7 @@ async function handleProbe(state: ServerState, req: http.IncomingMessage, res: h
     url: url.trim(),
     info,
     infoJsonPath,
-    choices: isPlaylist(info) ? buildPlaylistChoices(info) : buildChoices(info),
+    choices: choicesFor(info),
     createdAt: Date.now(),
   }
   state.probes.set(entry.id, entry)
