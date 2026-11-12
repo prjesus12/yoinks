@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process'
 import fs from 'node:fs/promises'
 import http from 'node:http'
 import {loadStored} from './components.js'
+import {HOSTED_DEFAULTS} from './defaults.js'
 import * as desktop from './desktop.js'
 import {jobsRunning, sweep} from './jobs.js'
 import {createRateLimiter} from './limits.js'
@@ -23,7 +24,6 @@ import {autoUpdateTick, getYtDlp, loadCookies} from './ytdlp-setup.js'
 export type {ChoiceView, ComponentsView, JobEvent, ProbeView, Settings} from './types.js'
 export type {Desktop, HostedOptions} from './state.js'
 
-const DEFAULT_PORT = 4455
 /** How long in-flight work gets to clean up before the process leaves anyway. */
 const SHUTDOWN_GRACE_MS = 5000
 
@@ -70,7 +70,7 @@ export type WebServer = {
 }
 
 export async function startWebServer({
-  port = DEFAULT_PORT,
+  port = HOSTED_DEFAULTS.port,
   open = true,
   outDir: requestedOutDir,
   preferManagedYtDlp = false,

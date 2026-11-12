@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import {HOSTED_DEFAULTS} from './defaults.js'
 import {sweep} from './jobs.js'
 import {createRateLimiter} from './limits.js'
 import {createServerState} from './state.js'
@@ -51,4 +52,16 @@ test('the sweep forgets the password meter, like the request meters', () => {
   sweep(state)
   assert.equal(state.probeLimiter.size(), 0, 'the probe meter must be pruned')
   assert.equal(state.authLimiter.size(), 0, 'the password meter must be pruned too')
+})
+
+test('a fresh state meters exactly what the hosted defaults say', () => {
+  // the state builds its limiters from the shared defaults — if either copy
+  // drifts, this is what notices
+  const state = createServerState()
+  let probes = 0
+  let downloads = 0
+  for (let i = 0; i <= HOSTED_DEFAULTS.probeLimit; i++) if (state.probeLimiter.take('p', 0).allowed) probes++
+  for (let i = 0; i <= HOSTED_DEFAULTS.downloadLimit; i++) if (state.downloadLimiter.take('d', 0).allowed) downloads++
+  assert.equal(probes, HOSTED_DEFAULTS.probeLimit)
+  assert.equal(downloads, HOSTED_DEFAULTS.downloadLimit)
 })

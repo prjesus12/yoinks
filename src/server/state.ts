@@ -13,6 +13,7 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import type {DownloadChoice, VideoInfo} from '../lib/ytdlp.js'
 import * as desktop from './desktop.js'
+import {HOSTED_DEFAULTS} from './defaults.js'
 import {createRateLimiter, type RateLimiter} from './limits.js'
 import type {JobEvent} from './types.js'
 
@@ -49,8 +50,6 @@ export type ResolvedHosted = HostedOptions & {
   maxProbes: number
   trustProxy: boolean
 }
-
-const HOSTED_DEFAULTS = {probeLimit: 12, downloadLimit: 6, maxProbes: 4, trustProxy: false} as const
 
 export const resolveHosted = (options: HostedOptions): ResolvedHosted => ({...HOSTED_DEFAULTS, ...options})
 
