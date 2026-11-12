@@ -45,8 +45,7 @@ export function SettingsDialog({
     if (!open || !components || working) return
     const stale = Date.now() - (components.ytdlp.checkedAt ?? 0) > RECHECK_AFTER
     if (stale) void run('check')
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- on open only
-  }, [open])
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps -- on open only
 
   async function run(action: 'check' | 'update') {
     setWorking(action)

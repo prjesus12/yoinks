@@ -1,5 +1,5 @@
 import {app, BrowserWindow, dialog, nativeTheme, shell} from 'electron'
-import {activeDownloads, startWebServer} from '../server/server.js'
+import {startWebServer, type WebServer} from '../server/server.js'
 
 // The desktop app is the web UI in its own window: the same local server
 // runs inside the app, and the window loads it. Native dialogs replace the
@@ -8,6 +8,8 @@ import {activeDownloads, startWebServer} from '../server/server.js'
 app.setName('yoinks')
 
 let win: BrowserWindow | undefined
+/** The server this app runs — the handle owns the download count. */
+let server: WebServer | undefined
 let baseUrl = ''
 
 // one app, one server — a second launch just focuses the first
@@ -54,7 +56,7 @@ async function createWindow() {
 }
 
 app.on('before-quit', event => {
-  const running = activeDownloads()
+  const running = server?.activeDownloads() ?? 0
   if (running === 0) return
   const choice = dialog.showMessageBoxSync({
     type: 'question',
@@ -78,7 +80,7 @@ app.on('activate', () => {
 
 void app.whenReady().then(async () => {
   try {
-    baseUrl = await startWebServer({
+    const started = await startWebServer({
       port: 0, // any free port — never clashes with `yoinks --web`
       open: false,
       preferManagedYtDlp: true,
@@ -102,6 +104,8 @@ void app.whenReady().then(async () => {
         },
       },
     })
+    server = started
+    baseUrl = server.url
     await createWindow()
   } catch (error) {
     dialog.showErrorBox('yoinks couldn’t start', error instanceof Error ? error.message : String(error))

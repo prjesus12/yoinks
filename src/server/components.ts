@@ -1,11 +1,11 @@
 import fs from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import {commandOutput, resolveFfmpeg} from '../lib/ytdlp.js'
+import {stateDir} from '../lib/state-dir.js'
 export {isNewer} from '../lib/version.js'
 import type {ComponentsView} from './types.js'
 
-const SETTINGS_FILE = path.join(os.homedir(), '.config', 'yoinks', 'web.json')
+const settingsFile = () => path.join(stateDir(), 'web.json')
 const LATEST_RELEASE = 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest'
 
 /** What the web UI / desktop app remembers between runs. */
@@ -21,7 +21,7 @@ export type StoredSettings = {
 
 export async function loadStored(): Promise<StoredSettings> {
   try {
-    const parsed: unknown = JSON.parse(await fs.readFile(SETTINGS_FILE, 'utf8'))
+    const parsed: unknown = JSON.parse(await fs.readFile(settingsFile(), 'utf8'))
     return parsed && typeof parsed === 'object' ? (parsed as StoredSettings) : {}
   } catch {
     return {}
@@ -31,8 +31,8 @@ export async function loadStored(): Promise<StoredSettings> {
 export async function saveStored(patch: Partial<StoredSettings>): Promise<StoredSettings> {
   const next = {...(await loadStored()), ...patch}
   try {
-    await fs.mkdir(path.dirname(SETTINGS_FILE), {recursive: true})
-    await fs.writeFile(SETTINGS_FILE, `${JSON.stringify(next, null, 2)}\n`)
+    await fs.mkdir(path.dirname(settingsFile()), {recursive: true})
+    await fs.writeFile(settingsFile(), `${JSON.stringify(next, null, 2)}\n`)
   } catch {
     // remembering is a nicety
   }

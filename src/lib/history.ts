@@ -1,13 +1,13 @@
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
+import {stateDir} from './state-dir.js'
 
-const HISTORY_FILE = path.join(os.homedir(), '.config', 'yoinks', 'history.json')
+const historyFile = () => path.join(stateDir(), 'history.json')
 const LIMIT = 50
 
 export function loadHistory(): string[] {
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'))
+    const parsed: unknown = JSON.parse(fs.readFileSync(historyFile(), 'utf8'))
     return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : []
   } catch {
     return []
@@ -18,8 +18,8 @@ export function loadHistory(): string[] {
 export function addToHistory(url: string): string[] {
   const next = [url, ...loadHistory().filter(entry => entry !== url)].slice(0, LIMIT)
   try {
-    fs.mkdirSync(path.dirname(HISTORY_FILE), {recursive: true})
-    fs.writeFileSync(HISTORY_FILE, `${JSON.stringify(next, null, 2)}\n`)
+    fs.mkdirSync(path.dirname(historyFile()), {recursive: true})
+    fs.writeFileSync(historyFile(), `${JSON.stringify(next, null, 2)}\n`)
   } catch {
     // history is a nicety — never let it break a download
   }

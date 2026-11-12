@@ -212,7 +212,7 @@ function AppContent({
       ytdlpRef.current = ytdlp
       if (controller.signal.aborted) return
       setPhase({name: 'probing', status: 'fetching video info…'})
-      const {info: videoInfo, infoJsonPath} = await probe(ytdlp, targetUrl, controller.signal)
+      const {info: videoInfo, infoJsonPath} = await probe(ytdlp, targetUrl, {signal: controller.signal})
       if (controller.signal.aborted) return
       infoJsonRef.current = infoJsonPath
       setInfo(videoInfo)
@@ -345,8 +345,7 @@ function AppContent({
     const index = presetChoiceIndex(choices, preset)
     if (index >= 0) handlePick({value: index})
     else fail(`nothing to download as ${preset === 'best' ? 'video' : preset} here`)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per picker
-  }, [phase.name])
+  }, [phase.name]) // eslint-disable-line react-hooks/exhaustive-deps -- once per picker
 
   let hints: Array<[string, string]> = [...HINTS[phase.name], ['^t', `theme:${theme.mode}`]]
   if (phase.name === 'input' && history.length > 0) {

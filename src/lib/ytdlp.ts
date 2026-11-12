@@ -266,7 +266,38 @@ export type ProbeResult = {
   infoJsonPath: string
 }
 
-export async function probe(ytdlp: string, url: string, signal?: AbortSignal): Promise<ProbeResult> {
+/** A hung extraction otherwise holds a process (and a server slot) forever. */
+export const PROBE_TIMEOUT_MS = 90_000
+
+/**
+ * How long a killed child gets to actually die before we stop waiting on it.
+ * Fixed rather than derived from the timeout: a cancel should feel immediate,
+ * and yt-dlp exits in milliseconds when it gets SIGTERM.
+ */
+const KILL_GRACE_MS = 1500
+
+/**
+ * Stop waiting on a child we already asked to die. yt-dlp runs ffmpeg of its
+ * own, and a grandchild can hold the stdout pipe open long after the process
+ * we killed is gone — without this the promise outlives the timeout.
+ */
+function forceStop(child: ChildProcess): void {
+  child.kill('SIGKILL')
+  child.stdout?.destroy()
+  child.stderr?.destroy()
+  child.unref()
+}
+
+export type ProbeOptions = {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+export async function probe(
+  ytdlp: string,
+  url: string,
+  {signal, timeoutMs = PROBE_TIMEOUT_MS}: ProbeOptions = {},
+): Promise<ProbeResult> {
   const stdout = await new Promise<string>((resolve, reject) => {
     // --flat-playlist lists a playlist's entries without extracting every
     // video (seconds instead of minutes); single videos are unaffected
@@ -276,15 +307,36 @@ export async function probe(ytdlp: string, url: string, signal?: AbortSignal): P
     })
     let out = ''
     let stderr = ''
+    let timedOut = false
+    let settled = false
+    let escalation: NodeJS.Timeout | undefined
+    const timeoutError = () => {
+      const seconds = Math.max(1, Math.round(timeoutMs / 1000))
+      return new Error(`Reading that link timed out after ${seconds}s — try again, or paste a direct video link.`)
+    }
+    const settle = (error?: Error, value?: string) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (escalation) clearTimeout(escalation)
+      if (error) reject(error)
+      else resolve(value ?? '')
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGTERM')
+      escalation = setTimeout(() => {
+        forceStop(child)
+        settle(timeoutError())
+      }, KILL_GRACE_MS)
+    }, timeoutMs)
     child.stdout.on('data', chunk => (out += chunk))
     child.stderr.on('data', chunk => (stderr += chunk))
-    child.on('error', reject)
+    child.on('error', error => settle(error))
     child.on('close', code => {
-      if (code !== 0) {
-        reject(new Error(cleanYtDlpError(stderr) || `yt-dlp exited with code ${code}`))
-      } else {
-        resolve(out)
-      }
+      if (timedOut) settle(timeoutError())
+      else if (code !== 0) settle(new Error(cleanYtDlpError(stderr) || `yt-dlp exited with code ${code}`))
+      else settle(undefined, out)
     })
   })
 
@@ -527,16 +579,28 @@ process.on('exit', () => {
   for (const child of activeChildren) child.kill('SIGTERM')
 })
 
+/**
+ * How long yt-dlp may stay silent before the transfer counts as dead. Progress
+ * is reported many times a second, so this only fires on a stalled connection;
+ * it is deliberately generous because post-processing (merging, re-encoding a
+ * long track to mp3) can be quiet for minutes.
+ */
+export const DOWNLOAD_IDLE_TIMEOUT_MS = 5 * 60_000
+
+export type DownloadOptions = {
+  ytdlp: string
+  ffmpegLocation?: string
+  url: string
+  /** When set, reuse the probe's metadata instead of re-extracting — starts much faster. */
+  infoJsonPath?: string
+  choice: DownloadChoice
+  outDir: string
+  /** Override the stall guard (tests, or a caller that knows better). */
+  idleTimeoutMs?: number
+}
+
 export function download(
-  opts: {
-    ytdlp: string
-    ffmpegLocation?: string
-    url: string
-    /** When set, reuse the probe's metadata instead of re-extracting — starts much faster. */
-    infoJsonPath?: string
-    choice: DownloadChoice
-    outDir: string
-  },
+  opts: DownloadOptions,
   handlers: DownloadHandlers,
   signal?: AbortSignal,
 ): Promise<DownloadResult> {
@@ -583,8 +647,58 @@ export function download(
     // every file yt-dlp writes for the current item, so a cancel can clean
     // up after itself without touching playlist tracks that already finished
     let destinations: string[] = []
+    let stalled = false
+    let spawnError: Error | undefined
+    let settled = false
+    let escalation: NodeJS.Timeout | undefined
+    let idleTimer: NodeJS.Timeout
+
+    // a dead socket reports nothing at all, so silence is the signal
+    const idleTimeoutMs = opts.idleTimeoutMs ?? DOWNLOAD_IDLE_TIMEOUT_MS
+
+    /**
+     * The one place that settles this promise. A cancel or a stall cleans up
+     * first: settling early is what used to leave `.part` files behind.
+     */
+    async function settle(result?: DownloadResult, error?: Error): Promise<void> {
+      if (settled) return
+      settled = true
+      clearTimeout(idleTimer)
+      if (escalation) clearTimeout(escalation)
+      signal?.removeEventListener('abort', onAbort)
+      activeChildren.delete(child)
+      if (error) await removePartials(destinations)
+      if (error) reject(error)
+      else resolve(result as DownloadResult)
+    }
+
+    // spawn() kills the child on abort, but 'close' only fires once every
+    // pipe is closed — a grandchild holding them would stall the cancel
+    function onAbort() {
+      child.kill('SIGTERM')
+      escalation = setTimeout(() => {
+        forceStop(child)
+        void settle(undefined, new Error('Download cancelled.'))
+      }, KILL_GRACE_MS)
+    }
+
+    const touch = () => {
+      clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => {
+        stalled = true
+        child.kill('SIGTERM')
+        escalation = setTimeout(() => {
+          forceStop(child)
+          void settle(undefined, new Error(stalledMessage(idleTimeoutMs)))
+        }, KILL_GRACE_MS)
+      }, idleTimeoutMs)
+    }
+    touch()
+    if (signal?.aborted) onAbort()
+    else signal?.addEventListener('abort', onAbort, {once: true})
 
     child.stdout.on('data', (chunk: Buffer) => {
+      touch()
       buffer += chunk.toString()
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''
@@ -633,37 +747,51 @@ export function download(
         }
       }
     })
-    child.stderr.on('data', chunk => (stderr += chunk))
-    child.on('error', reject)
-    child.on('close', code => {
-      activeChildren.delete(child)
+    child.stderr.on('data', chunk => {
+      touch()
+      stderr += chunk
+    })
+    // an abort and a failed spawn both surface as 'error'. 'close' is the one
+    // place that can clean up first and settle second, so only note it here —
+    // rejecting on 'error' would settle the promise before the cleanup runs.
+    child.on('error', error => (spawnError = error))
+    child.on('close', async code => {
       if (signal?.aborted) {
-        // cancelled on purpose — don't leave half-written files behind
-        void removePartials(destinations)
-        reject(new Error('Download cancelled.'))
+        await settle(undefined, new Error('Download cancelled.'))
+        return
+      }
+      if (stalled) {
+        await settle(undefined, new Error(stalledMessage(idleTimeoutMs)))
         return
       }
       const filepath = filepaths.at(-1)
       if (playlist && filepath) {
         // --ignore-errors exits non-zero when any entry failed — still a win
-        resolve({
+        await settle({
           filepath: path.dirname(filepath),
           count: filepaths.length,
           failed: Math.max(0, totalItems - filepaths.length),
         })
       } else if (code === 0 && filepath) {
-        resolve({filepath, count: 1, failed: 0})
+        await settle({filepath, count: 1, failed: 0})
       } else {
-        reject(new Error(cleanYtDlpError(stderr) || `Download failed (yt-dlp exit code ${code}).`))
+        const message = cleanYtDlpError(stderr) || spawnError?.message || `Download failed (yt-dlp exit code ${code}).`
+        await settle(undefined, new Error(message))
       }
     })
   })
 }
 
+const stalledMessage = (idleTimeoutMs: number) => {
+  const seconds = Math.max(1, Math.round(idleTimeoutMs / 1000))
+  return `Download stalled — no progress for ${seconds}s. Check your connection and try again.`
+}
+
+/** Everything yt-dlp may have half-written for the files it announced. */
 function removePartials(destinations: string[]): Promise<unknown> {
   return Promise.allSettled(
     destinations
-      .flatMap(dest => [dest, `${dest}.part`, `${dest}.ytdl`])
+      .flatMap(dest => [dest, `${dest}.part`, `${dest}.ytdl`, `${dest}.temp`])
       .map(file => fs.rm(file, {force: true})),
   )
 }

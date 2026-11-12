@@ -66,7 +66,7 @@ const outDir = args.outDir ? path.resolve(expandHome(args.outDir)) : undefined
 if (args.web) {
   // lazy: the terminal UI shouldn't pay for loading the server
   const {startWebServer} = await import('./server/server.js')
-  const url = await startWebServer({port: args.port, open: !args.noOpen, outDir})
+  const {url} = await startWebServer({port: args.port, open: !args.noOpen, outDir})
   console.log(`yoinks web → ${url}\n\nRunning on this computer only. Press ^c to stop.`)
   // keep serving until ^c
   await new Promise(() => {})

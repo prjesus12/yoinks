@@ -17,10 +17,15 @@ Environment=HOME=/var/lib/yoinks
 
 Environment=NODE_ENV=production
 Environment=PORT=4455
-Environment=YOINKS_PASSWORD=CAMBIA_ESTA_CONTRASEÑA
+# YOINKS_PASSWORD is required — the server refuses to start without it.
+# Keep it out of this file: put it in /etc/yoinks/env, owned by root, mode 0600.
+EnvironmentFile=-/etc/yoinks/env
 # Environment=YOINKS_MAX_JOBS=3
 # Environment=YOINKS_FILE_TTL=15
 # Environment=YOINKS_MAX_PLAYLIST=50
+# Environment=YOINKS_PROBE_LIMIT=12
+# Environment=YOINKS_DOWNLOAD_LIMIT=6
+# Environment=YOINKS_MAX_PROBES=4
 # Environment=YOINKS_PROXY=http://usuario:clave@host:puerto
 
 [Install]

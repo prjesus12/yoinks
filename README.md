@@ -139,12 +139,23 @@ disk, and deleted from the server after a few minutes. Playlists come as a singl
 | variable | default | what it does |
 | --- | --- | --- |
 | `PORT` | `4455` | port to listen on (`8080` in the Docker image) |
-| `YOINKS_PASSWORD` | none | ask for this password before anything works — **set it**, an open downloader gets abused fast |
+| `YOINKS_PASSWORD` | — | **required.** the password asked for before anything works — without it the server refuses to start |
+| `YOINKS_ALLOW_PUBLIC` | none | set to `1` to run with no password anyway (only for a server you really mean to leave open) |
 | `YOINKS_MAX_JOBS` | `3` | downloads running at once |
 | `YOINKS_FILE_TTL` | `15` | minutes finished files are kept |
 | `YOINKS_COOKIES` | none | path to a Netscape `cookies.txt` — fixes YouTube's "confirm you're not a bot" |
 | `YOINKS_PROXY` | none | proxy for yt-dlp (`http://user:pass@host:port`) |
 | `YOINKS_MAX_PLAYLIST` | `50` | longest playlist accepted |
+| `YOINKS_PROBE_LIMIT` | `12` | link lookups one visitor may make per minute |
+| `YOINKS_DOWNLOAD_LIMIT` | `6` | downloads one visitor may start per minute |
+| `YOINKS_MAX_PROBES` | `4` | link lookups running at once, all visitors together |
+| `YOINKS_TRUST_PROXY` | none | set to `1` behind a proxy you control, so the limits key off `x-forwarded-for` |
+
+Two of those are not negotiable. The password is required because an open
+downloader gets found and abused fast. And links that point at a private or
+local address (`localhost`, `10.x`, `192.168.x`, `169.254.169.254`, …) are
+refused: the server fetches on a visitor's behalf, from its own network
+position, which is exactly what an SSRF hole looks like from the outside.
 
 `/healthz` answers `ok` for health checks. Heads-up: YouTube often blocks
 datacenter IPs, so a cloud host may hit "sign in to confirm you're not a

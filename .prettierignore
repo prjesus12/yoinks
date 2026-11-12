@@ -1,0 +1,9 @@
+dist
+release
+build
+node_modules
+expo
+assets
+.atl
+package-lock.json
+*.md
