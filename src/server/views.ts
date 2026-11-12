@@ -10,11 +10,13 @@ import {
   type DownloadChoice,
   type VideoInfo,
 } from '../lib/ytdlp.js'
+import {tildePath} from '../lib/format.js'
 import {detectPlatform, playlistUrlFor} from '../lib/platforms.js'
 import type {Probe, ServerState} from './state.js'
 import type {ChoiceView, ProbeView, Settings} from './types.js'
 
-export const prettyPath = (p: string) => (p.startsWith(os.homedir()) ? `~${p.slice(os.homedir().length)}` : p)
+/** The API shows paths the way the terminal does — one rule, in format.ts. */
+export const prettyPath = (p: string) => tildePath(p, os.homedir())
 
 export const settingsView = (state: ServerState): Settings => ({
   outDir: prettyPath(state.outDir),

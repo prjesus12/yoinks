@@ -25,8 +25,23 @@ export function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
+/**
+ * `/Users/you/Downloads/a.mp4` → `~/Downloads/a.mp4`. The one copy of this rule.
+ *
+ * The separator is checked explicitly: a plain prefix test would turn
+ * `/Users/youelsewhere/a.mp4` into `~elsewhere/a.mp4`, and this module is also
+ * bundled for the browser, so it cannot import `node:path` to do it properly.
+ */
+export function tildePath(filepath: string, homedir: string): string {
+  // `HOME` can arrive with a trailing separator, and then nothing ever matches
+  const home = homedir.length > 1 ? homedir.replace(/[\\/]+$/, '') : homedir
+  if (filepath === home) return '~'
+  const inside = filepath.startsWith(`${home}/`) || filepath.startsWith(`${home}\\`)
+  return inside ? `~${filepath.slice(home.length)}` : filepath
+}
+
 export function shortenPath(filepath: string, homedir: string, max = 60): string {
-  const pretty = filepath.startsWith(homedir) ? `~${filepath.slice(homedir.length)}` : filepath
+  const pretty = tildePath(filepath, homedir)
   if (pretty.length <= max) return pretty
   const ext = /\.\w{1,5}$/.exec(pretty)?.[0] ?? ''
   return `${pretty.slice(0, max - ext.length - 1)}…${ext}`

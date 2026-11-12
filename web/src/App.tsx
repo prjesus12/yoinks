@@ -636,7 +636,13 @@ function DownloadCard({
 }
 
 
-/** Long paths keep their end — the album folder is the part that matters. */
+/**
+ * Elide from the LEFT: `…/Artist - Album/01 - Track.mp4` — the album folder is
+ * the part that matters. Deliberately not `shortenPath` from
+ * src/lib/format.ts, which keeps the head and the extension: that is the right
+ * call in a terminal, where you know your own folders. In a browser the tail is
+ * what identifies the file, and there is no `$HOME` to shorten.
+ */
 function shortPath(full: string, max = 46): string {
   if (full.length <= max) return full
   const parts = full.split('/')
