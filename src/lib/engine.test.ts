@@ -104,7 +104,10 @@ const PLAYLIST = {
   _type: 'playlist',
   title: 'Album - A Record',
   uploader: 'The Artist',
-  entries: [{title: 'One', channel: 'The Artist'}, {title: 'Two', channel: 'The Artist'}],
+  entries: [
+    {title: 'One', channel: 'The Artist'},
+    {title: 'Two', channel: 'The Artist'},
+  ],
 } as VideoInfo
 
 test('a video gets its own formats', () => {
@@ -153,10 +156,7 @@ async function fakeYtDlp(script: string): Promise<{bin: string; dir: string; cal
   const bin = path.join(dir, 'yt-dlp')
   const log = path.join(dir, 'calls.log')
   await fs.writeFile(bin, `#!/bin/sh\necho "$*" >> "${log}"\n${script}\n`, {mode: 0o755})
-  const calls = async () =>
-    (await fs.readFile(log, 'utf8').catch(() => ''))
-      .split('\n')
-      .filter(Boolean)
+  const calls = async () => (await fs.readFile(log, 'utf8').catch(() => '')).split('\n').filter(Boolean)
   return {bin, dir, calls}
 }
 
@@ -172,7 +172,9 @@ const options = (bin: string, dir: string, choice: DownloadChoice = VIDEO_CHOICE
 })
 
 test('the retry drops the cached metadata and starts from the url', {skip: posixOnly}, async () => {
-  const {bin, dir, calls} = await fakeYtDlp(`case "$*" in *--load-info-json*) ${fail('HTTP Error 403: Forbidden')} ;; *) ${succeed('%DIR%')} ;; esac`)
+  const {bin, dir, calls} = await fakeYtDlp(
+    `case "$*" in *--load-info-json*) ${fail('HTTP Error 403: Forbidden')} ;; *) ${succeed('%DIR%')} ;; esac`,
+  )
   const withDir = await fakeYtDlp('exit 1')
   try {
     const script = await fs.readFile(bin, 'utf8')
@@ -222,16 +224,19 @@ test('a cancelled download is never retried', {skip: posixOnly}, async () => {
   }
 })
 
-test('the caller sees the second attempt\'s error, not the stale one', {skip: posixOnly}, async () => {
+test("the caller sees the second attempt's error, not the stale one", {skip: posixOnly}, async () => {
   const {bin, dir} = await fakeYtDlp(
     `case "$*" in *--load-info-json*) ${fail('stale failure')} ;; *) ${fail('fresh failure')} ;; esac`,
   )
   try {
-    await assert.rejects(downloadWithFreshInfo(options(bin, dir), noopHandlers, {onRefresh: () => {}}), (error: Error) => {
-      assert.match(error.message, /fresh failure/, 'the real problem is what the fresh attempt found')
-      assert.equal(/stale failure/.test(error.message), false)
-      return true
-    })
+    await assert.rejects(
+      downloadWithFreshInfo(options(bin, dir), noopHandlers, {onRefresh: () => {}}),
+      (error: Error) => {
+        assert.match(error.message, /fresh failure/, 'the real problem is what the fresh attempt found')
+        assert.equal(/stale failure/.test(error.message), false)
+        return true
+      },
+    )
   } finally {
     await fs.rm(dir, {recursive: true, force: true})
   }

@@ -1,9 +1,19 @@
+# Generated output and package-manager files.
 dist
 release
 build
 node_modules
-expo
+package-lock.json
+
+# Another formatter owns these: markdown for prose, assets for binaries.
+*.md
 assets
 .atl
-package-lock.json
-*.md
+
+# A separate package with its own lockfile and its own tooling. It is tracked,
+# so this is a deliberate exclusion rather than an oversight: format it with
+# expo's own config if that package grows one.
+expo
+
+# Tool caches.
+.codegraph

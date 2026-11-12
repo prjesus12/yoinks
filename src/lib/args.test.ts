@@ -122,7 +122,12 @@ test('a loopback bind needs no password', () => {
 })
 
 test('the exposing options only make sense with --web', () => {
-  for (const argv of [['--host', '127.0.0.1'], ['--password', 'hunter2hunter2'], ['--max-jobs', '2'], ['--allow-public']]) {
+  for (const argv of [
+    ['--host', '127.0.0.1'],
+    ['--password', 'hunter2hunter2'],
+    ['--max-jobs', '2'],
+    ['--allow-public'],
+  ]) {
     assert.match(parseArgs(argv).error ?? '', /only work with --web/, argv.join(' '))
   }
 })
@@ -146,7 +151,11 @@ test('a name that merely starts with 127. is not loopback', () => {
 
 test('a space is not a password', () => {
   for (const password of [' ', '   ', '\t']) {
-    assert.match(parseArgs(['--web', '--host', '0.0.0.0', '--password', password]).error ?? '', /needs a value|exposes yoinks/, password)
+    assert.match(
+      parseArgs(['--web', '--host', '0.0.0.0', '--password', password]).error ?? '',
+      /needs a value|exposes yoinks/,
+      password,
+    )
   }
 })
 

@@ -18,17 +18,14 @@ test('forced themes paint native border cells with the theme background', async 
 
     const renderPanel = (mode: 'auto' | 'light' | 'dark') =>
       renderToString(
-        React.createElement(
-          ThemeProvider,
-          {
-            mode,
-            children: React.createElement(Panel, {
-              title: 'Download',
-              width: 20,
-              children: React.createElement(Text, null, 'item'),
-            }),
-          },
-        ),
+        React.createElement(ThemeProvider, {
+          mode,
+          children: React.createElement(Panel, {
+            title: 'Download',
+            width: 20,
+            children: React.createElement(Text, null, 'item'),
+          }),
+        }),
       )
 
     assert.match(renderPanel('light'), /\x1b\[48;2;255;255;255m/)

@@ -14,7 +14,9 @@ export function Panel({title, width, children}: {title: string; width: number; c
   return (
     <Box flexDirection="column" width={width}>
       <Text>
-        <Text color={theme.gray} dimColor={theme.dimSecondary}>{'╭─ '}</Text>
+        <Text color={theme.gray} dimColor={theme.dimSecondary}>
+          {'╭─ '}
+        </Text>
         <Text color={theme.primary}>{title}</Text>
         <Text color={theme.gray} dimColor={theme.dimSecondary}>{` ${'─'.repeat(tail)}╮`}</Text>
       </Text>

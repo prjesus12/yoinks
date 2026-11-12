@@ -25,7 +25,11 @@ async function waitFor(check: () => Promise<boolean>, timeoutMs = 5000): Promise
   throw new Error('condition never became true')
 }
 
-const exists = (file: string) => fs.stat(file).then(() => true, () => false)
+const exists = (file: string) =>
+  fs.stat(file).then(
+    () => true,
+    () => false,
+  )
 
 const CHOICE: DownloadChoice = {label: '720p · mp4', kind: 'video', format: 'mp4', args: []}
 

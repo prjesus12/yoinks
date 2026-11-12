@@ -179,7 +179,9 @@ export function TextInput({
     return (
       <Text>
         <Text inverse> </Text>
-        <Text color={theme.gray} dimColor={theme.dimSecondary}>{placeholder.slice(0, span - 1)}</Text>
+        <Text color={theme.gray} dimColor={theme.dimSecondary}>
+          {placeholder.slice(0, span - 1)}
+        </Text>
       </Text>
     )
   }

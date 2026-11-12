@@ -39,5 +39,4 @@ export function useMouseClick(onClick: (x: number, y: number) => void, isActive:
  * leading ESC and hands the rest (`[<0;34;12M`) to ink-text-input as typed
  * text. Run every onChange value through this to drop the leaked reports.
  */
-export const stripMouseReports = (value: string) =>
-  value.replace(/\u001B?\[?<\d+;\d+;\d+[Mm]/g, '')
+export const stripMouseReports = (value: string) => value.replace(/\u001B?\[?<\d+;\d+;\d+[Mm]/g, '')

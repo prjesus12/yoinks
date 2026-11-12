@@ -39,17 +39,26 @@ export function FramedInput({
     <Box width={width + buttonW}>
       <Box flexDirection="column" width={width}>
         <Text>
-          <Text color={theme.gray} dimColor={theme.dimSecondary}>{'╭─ '}</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
+            {'╭─ '}
+          </Text>
           <Text color={theme.primary}>{title}</Text>
           <Text color={theme.gray} dimColor={theme.dimSecondary}>{` ${'─'.repeat(tail)}${button ? '─' : '╮'}`}</Text>
         </Text>
         <Box width={width} height={1} overflow="hidden">
-          <Text color={theme.gray} dimColor={theme.dimSecondary}>│ </Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
+            │{' '}
+          </Text>
           <Text color={theme.primary}>❯ </Text>
           <Box flexGrow={1} height={1} overflow="hidden">
             {children}
           </Box>
-          {button ? null : <Text color={theme.gray} dimColor={theme.dimSecondary}> │</Text>}
+          {button ? null : (
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>
+              {' '}
+              │
+            </Text>
+          )}
         </Box>
         <Text color={theme.gray} dimColor={theme.dimSecondary}>{`╰${'─'.repeat(inner)}${button ? '─' : '╯'}`}</Text>
       </Box>
@@ -57,7 +66,9 @@ export function FramedInput({
         <Box flexDirection="column" width={buttonW}>
           {/* bold matches the label row: with `inverse`, terminals brighten the
               bold default foreground, and the half-block fills must brighten too */}
-          <Text bold color={fillColor} dimColor={buttonDim && theme.dimSecondary}>{'▄'.repeat(buttonW)}</Text>
+          <Text bold color={fillColor} dimColor={buttonDim && theme.dimSecondary}>
+            {'▄'.repeat(buttonW)}
+          </Text>
           <Text
             backgroundColor={theme.inverseButton ? undefined : fillColor}
             color={theme.inverseButton ? undefined : theme.dark}
@@ -69,7 +80,9 @@ export function FramedInput({
             dimColor={buttonDim && theme.dimSecondary}
             bold
           >{`  ${button}  `}</Text>
-          <Text bold color={fillColor} dimColor={buttonDim && theme.dimSecondary}>{'▀'.repeat(buttonW)}</Text>
+          <Text bold color={fillColor} dimColor={buttonDim && theme.dimSecondary}>
+            {'▀'.repeat(buttonW)}
+          </Text>
         </Box>
       ) : null}
     </Box>

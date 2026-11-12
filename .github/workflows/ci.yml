@@ -33,5 +33,4 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run lint
-        # Prettier is configured (.prettierrc) but the tree is not formatted yet,
-        # so `prettier --check` is intentionally NOT a CI step in this pass.
+      - run: npm run format:check

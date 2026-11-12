@@ -205,8 +205,7 @@ function AppContent({
     setPhase({name: 'probing', status: 'warming up…'})
     try {
       const ytdlp =
-        ytdlpRef.current ||
-        (await ensureYtDlp(status => setPhase({name: 'probing', status}), controller.signal))
+        ytdlpRef.current || (await ensureYtDlp(status => setPhase({name: 'probing', status}), controller.signal))
       ytdlpRef.current = ytdlp
       if (controller.signal.aborted) return
       setPhase({name: 'probing', status: 'fetching video info…'})
@@ -288,8 +287,7 @@ function AppContent({
       const handlers = {
         onProgress: (progress: DownloadProgress) =>
           setPhase(prev => (prev.name === 'downloading' ? {...prev, progress, processing: false} : prev)),
-        onProcessing: () =>
-          setPhase(prev => (prev.name === 'downloading' ? {...prev, processing: true} : prev)),
+        onProcessing: () => setPhase(prev => (prev.name === 'downloading' ? {...prev, processing: true} : prev)),
         onItem: (item: number, totalItems: number) =>
           setPhase(prev =>
             prev.name === 'downloading'
@@ -374,29 +372,28 @@ function AppContent({
     if (action) clickTargets.push({match: `${key} ${label}`, action})
   }
 
-  useMouseClick(
-    (x, y) => {
-      // the logo takes you home — it's the 3 rows one gap above the tagline
-      const taglineRow = findFrameRow(TAGLINE)
-      if (taglineRow > 3 && y - 1 >= taglineRow - 4 && y - 1 <= taglineRow - 2) {
-        const span = frameRowSpan(y - 1)
-        if (span && x >= span[0] - 1 && x <= span[1] + 1) {
-          if (phase.name === 'probing' || phase.name === 'downloading') cancelRun()
-          else if (phase.name !== 'input') resetToInput()
-          return
-        }
+  useMouseClick((x, y) => {
+    // the logo takes you home — it's the 3 rows one gap above the tagline
+    const taglineRow = findFrameRow(TAGLINE)
+    if (taglineRow > 3 && y - 1 >= taglineRow - 4 && y - 1 <= taglineRow - 2) {
+      const span = frameRowSpan(y - 1)
+      if (span && x >= span[0] - 1 && x <= span[1] + 1) {
+        if (phase.name === 'probing' || phase.name === 'downloading') cancelRun()
+        else if (phase.name !== 'input') resetToInput()
+        return
       }
-      clickTargetAt(x, y, clickTargets)?.action()
-    },
-    Boolean(process.stdin.isTTY),
-  )
+    }
+    clickTargetAt(x, y, clickTargets)?.action()
+  }, Boolean(process.stdin.isTTY))
 
   return (
     <FullScreen>
       <Logo />
       <Gap />
       <Text color={theme.primary}>{TAGLINE}</Text>
-      <Text color={theme.gray} dimColor={theme.dimSecondary}>youtube · x · instagram · threads · tiktok · +1800 more</Text>
+      <Text color={theme.gray} dimColor={theme.dimSecondary}>
+        youtube · x · instagram · threads · tiktok · +1800 more
+      </Text>
       <Gap />
 
       {phase.name === 'input' && (
@@ -416,19 +413,32 @@ function AppContent({
             />
           </FramedInput>
           {phase.warning ? (
-            <Text color={theme.gray} dimColor={theme.dimSecondary}>✗ {phase.warning}</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>
+              ✗ {phase.warning}
+            </Text>
           ) : clipboardOffered ? (
-            <Text color={theme.gray} dimColor={theme.dimSecondary}>link in your clipboard — ⇥ to paste it</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>
+              link in your clipboard — ⇥ to paste it
+            </Text>
           ) : clipboardAccepted ? (
-            <Text color={theme.gray} dimColor={theme.dimSecondary}>from your clipboard — ↵ to yoink it</Text>
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>
+              from your clipboard — ↵ to yoink it
+            </Text>
           ) : null}
         </Box>
       )}
 
       {phase.name === 'probing' && (
         <Box flexDirection="column" alignItems="center">
-          <FramedInput title={platform ? platform.label : 'Paste a link'} width={boxWidth} button={YOINK_BUTTON} buttonDim>
-            <Text color={theme.gray} dimColor={theme.dimSecondary}>{url.length > boxWidth - 8 ? `${url.slice(0, boxWidth - 9)}…` : url}</Text>
+          <FramedInput
+            title={platform ? platform.label : 'Paste a link'}
+            width={boxWidth}
+            button={YOINK_BUTTON}
+            buttonDim
+          >
+            <Text color={theme.gray} dimColor={theme.dimSecondary}>
+              {url.length > boxWidth - 8 ? `${url.slice(0, boxWidth - 9)}…` : url}
+            </Text>
           </FramedInput>
         </Box>
       )}
@@ -448,7 +458,7 @@ function AppContent({
               <Text color={theme.gray} dimColor={theme.dimSecondary}>
                 ☰ {platform.label} playlist · {playlistSize(info)} videos
                 {totalDuration(info) ? ` · ${formatDuration(totalDuration(info)!)}` : ''}
-                {info.uploader ?? info.channel ? ` · ${info.uploader ?? info.channel}` : ''}
+                {(info.uploader ?? info.channel) ? ` · ${info.uploader ?? info.channel}` : ''}
               </Text>
             ) : (
               <Text color={theme.gray} dimColor={theme.dimSecondary}>
@@ -488,14 +498,19 @@ function AppContent({
                 <Text color={theme.primary}>
                   <Spinner type="dots" />
                 </Text>
-                <Text color={theme.gray} dimColor={theme.dimSecondary}> {trackLabel(phase.track)}processing…</Text>
+                <Text color={theme.gray} dimColor={theme.dimSecondary}>
+                  {' '}
+                  {trackLabel(phase.track)}processing…
+                </Text>
               </Text>
             </>
           ) : phase.progress?.totalBytes ? (
             <>
               <ProgressBar percent={phase.progress.downloadedBytes / phase.progress.totalBytes} />
               <Gap />
-              <Text color={theme.gray} dimColor={theme.dimSecondary}>{downloadMeta(phase.progress, phase.track)}</Text>
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>
+                {downloadMeta(phase.progress, phase.track)}
+              </Text>
             </>
           ) : phase.progress ? (
             <>
@@ -503,10 +518,15 @@ function AppContent({
                 <Text color={theme.primary}>
                   <Spinner type="dots" />
                 </Text>
-                <Text color={theme.gray} dimColor={theme.dimSecondary}> downloading…</Text>
+                <Text color={theme.gray} dimColor={theme.dimSecondary}>
+                  {' '}
+                  downloading…
+                </Text>
               </Text>
               <Gap />
-              <Text color={theme.gray} dimColor={theme.dimSecondary}>{indeterminateMeta(phase.progress, phase.track)}</Text>
+              <Text color={theme.gray} dimColor={theme.dimSecondary}>
+                {indeterminateMeta(phase.progress, phase.track)}
+              </Text>
             </>
           ) : (
             <>
@@ -535,11 +555,15 @@ function AppContent({
         <Box flexDirection="column" alignItems="center">
           <Text>
             <Text bold color={theme.primary}>
-              {phase.playlist ? `✓ yoinked ${phase.result.count} ${phase.result.count === 1 ? 'file' : 'files'}! ` : '✓ yoinked! '}
+              {phase.playlist
+                ? `✓ yoinked ${phase.result.count} ${phase.result.count === 1 ? 'file' : 'files'}! `
+                : '✓ yoinked! '}
             </Text>
             <Text color={theme.primary}>{phase.playlist ? 'find them in:' : 'find your file in:'}</Text>
           </Text>
-          <Text color={theme.gray} dimColor={theme.dimSecondary}>{shortenPath(phase.result.filepath, os.homedir(), 60)}</Text>
+          <Text color={theme.gray} dimColor={theme.dimSecondary}>
+            {shortenPath(phase.result.filepath, os.homedir(), 60)}
+          </Text>
           {phase.result.failed > 0 ? (
             <Text color={theme.gray} dimColor={theme.dimSecondary}>
               {phase.result.failed} unavailable {phase.result.failed === 1 ? 'video' : 'videos'} skipped
@@ -553,14 +577,18 @@ function AppContent({
             borderBackgroundColor={theme.background}
             paddingX={3}
           >
-            <Text bold color={theme.primary}>{DONE_LABEL}</Text>
+            <Text bold color={theme.primary}>
+              {DONE_LABEL}
+            </Text>
           </Box>
         </Box>
       )}
 
       {phase.name === 'error' && (
         <Box flexDirection="column" alignItems="center" width={Math.max(10, Math.min(columns - 6, 72))}>
-          <Text bold color={theme.primary}>✗ {phase.message}</Text>
+          <Text bold color={theme.primary}>
+            ✗ {phase.message}
+          </Text>
         </Box>
       )}
 
@@ -575,7 +603,10 @@ function AppContent({
                   <Text color={theme.primary}>
                     <Spinner type="dots" />
                   </Text>
-                  <Text color={theme.gray} dimColor={theme.dimSecondary}> {phase.status}</Text>
+                  <Text color={theme.gray} dimColor={theme.dimSecondary}>
+                    {' '}
+                    {phase.status}
+                  </Text>
                 </Text>
               ) : undefined
             }

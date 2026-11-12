@@ -105,7 +105,8 @@ export async function installManagedYtDlp(signal?: AbortSignal): Promise<string>
     }
     await fs.rm(retired, {recursive: true, force: true})
     // earlier versions kept the slow single-file build here
-    if (BUILD.dir !== path.join(YOINKS_HOME, 'bin')) await fs.rm(path.join(YOINKS_HOME, 'bin'), {recursive: true, force: true})
+    if (BUILD.dir !== path.join(YOINKS_HOME, 'bin'))
+      await fs.rm(path.join(YOINKS_HOME, 'bin'), {recursive: true, force: true})
   } finally {
     await fs.rm(download, {force: true})
     await fs.rm(staging, {recursive: true, force: true})
@@ -301,10 +302,14 @@ export async function probe(
   const stdout = await new Promise<string>((resolve, reject) => {
     // --flat-playlist lists a playlist's entries without extracting every
     // video (seconds instead of minutes); single videos are unaffected
-    const child = spawn(ytdlp, ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', ...CHALLENGE_ARGS, ...EXTRA_ARGS, url], {
-      signal,
-      env: childEnv,
-    })
+    const child = spawn(
+      ytdlp,
+      ['-J', '--no-playlist', '--flat-playlist', '--no-warnings', ...CHALLENGE_ARGS, ...EXTRA_ARGS, url],
+      {
+        signal,
+        env: childEnv,
+      },
+    )
     let out = ''
     let stderr = ''
     let timedOut = false
@@ -453,7 +458,7 @@ export function buildChoices(info: VideoInfo): DownloadChoice[] {
     const muxed = best.acodec && best.acodec !== 'none'
     const videoSize = best.filesize ?? best.filesize_approx
     // no video size means no estimate — the audio alone would read as a tiny file
-    const size = videoSize ? videoSize + (muxed ? 0 : audioSize ?? 0) : 0
+    const size = videoSize ? videoSize + (muxed ? 0 : (audioSize ?? 0)) : 0
     const sizeLabel = size > 0 ? ` · ~${formatBytes(size)}` : ''
     choices.push({
       kind: 'video',
@@ -502,15 +507,13 @@ export function buildPlaylistChoices(info: VideoInfo): DownloadChoice[] {
   const playlistFolder = playlistFolderName(info)
   const album = playlistAlbum(info)
   return [
-    ...AUDIO_FORMATS.map(
-      (format): DownloadChoice => ({
-        kind: 'audio',
-        format,
-        playlistFolder,
-        label: `all ${count} tracks · ${format}`,
-        args: [...audioArgs(format, album.artist), ...albumTagArgs(album)],
-      }),
-    ),
+    ...AUDIO_FORMATS.map((format): DownloadChoice => ({
+      kind: 'audio',
+      format,
+      playlistFolder,
+      label: `all ${count} tracks · ${format}`,
+      args: [...audioArgs(format, album.artist), ...albumTagArgs(album)],
+    })),
     {
       kind: 'video',
       format: 'mp4',
@@ -628,7 +631,11 @@ export function download(
     '-o',
     playlist
       ? // the folder is literal text inside yt-dlp's template, so escape its %
-        path.join(opts.outDir.replaceAll('%', '%%'), playlistFolder.replaceAll('%', '%%'), '%(playlist_index)02d - %(title).60s.%(ext)s')
+        path.join(
+          opts.outDir.replaceAll('%', '%%'),
+          playlistFolder.replaceAll('%', '%%'),
+          '%(playlist_index)02d - %(title).60s.%(ext)s',
+        )
       : path.join(opts.outDir, '%(title).60s.%(ext)s'),
   ]
   if (opts.ffmpegLocation) args.push('--ffmpeg-location', opts.ffmpegLocation)

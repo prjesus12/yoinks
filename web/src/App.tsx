@@ -28,10 +28,7 @@ if (SHELL) document.documentElement.dataset.shell = SHELL
 type Progress = Extract<JobEvent, {type: 'progress'}>
 
 /** The link being looked at right now — downloads run on their own below it. */
-type State =
-  | {step: 'idle'; error?: string}
-  | {step: 'probing'}
-  | {step: 'ready'; probe: ProbeView; error?: string}
+type State = {step: 'idle'; error?: string} | {step: 'probing'} | {step: 'ready'; probe: ProbeView; error?: string}
 
 /** One download in the list. Several run at once. */
 type Download = {
@@ -327,16 +324,18 @@ export function App() {
               <span className="dot" aria-hidden /> Running on this computer
             </span>
           )}
-          {hosted && !settings?.cookies?.canEdit ? null : <button
-            type="button"
-            className="icon-button"
-            onClick={() => setSettingsOpen(true)}
-            aria-label={updateAvailable(components) ? 'Settings — update available' : 'Settings'}
-            title="Settings"
-          >
-            <SettingsIcon />
-            {updateAvailable(components) ? <span className="update-dot" aria-hidden /> : null}
-          </button>}
+          {hosted && !settings?.cookies?.canEdit ? null : (
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label={updateAvailable(components) ? 'Settings — update available' : 'Settings'}
+              title="Settings"
+            >
+              <SettingsIcon />
+              {updateAvailable(components) ? <span className="update-dot" aria-hidden /> : null}
+            </button>
+          )}
         </div>
       </header>
 
@@ -421,20 +420,29 @@ export function App() {
                   </p>
                 ) : null}
                 <div className="actions">
-                  {hosted ? <div className="destination" /> : <div className="destination">
-                    <span className="destination-label">Saves to</span>
-                    <span className="destination-path">
-                      <Folder />
-                      <span className="path" title={destination(settings, state.probe)}>
-                        {shortPath(destination(settings, state.probe))}
+                  {hosted ? (
+                    <div className="destination" />
+                  ) : (
+                    <div className="destination">
+                      <span className="destination-label">Saves to</span>
+                      <span className="destination-path">
+                        <Folder />
+                        <span className="path" title={destination(settings, state.probe)}>
+                          {shortPath(destination(settings, state.probe))}
+                        </span>
+                        {settings?.canChooseFolder ? (
+                          <button
+                            type="button"
+                            className="change"
+                            onClick={() => void onChooseFolder()}
+                            disabled={choosing}
+                          >
+                            {choosing ? 'Choosing…' : 'Change'}
+                          </button>
+                        ) : null}
                       </span>
-                      {settings?.canChooseFolder ? (
-                        <button type="button" className="change" onClick={() => void onChooseFolder()} disabled={choosing}>
-                          {choosing ? 'Choosing…' : 'Change'}
-                        </button>
-                      ) : null}
-                    </span>
-                  </div>}
+                    </div>
+                  )}
                   <button
                     className="button primary"
                     type="button"
@@ -543,7 +551,11 @@ function DownloadCard({
             )}
             <div className="progress-bottom">
               <p className="muted">
-                {download.status === 'queued' ? 'Waiting…' : download.status === 'probing' ? 'Reading link…' : 'Couldn’t read this link'}
+                {download.status === 'queued'
+                  ? 'Waiting…'
+                  : download.status === 'probing'
+                    ? 'Reading link…'
+                    : 'Couldn’t read this link'}
               </p>
               <div className="done-actions">
                 {download.status === 'error' ? (
@@ -580,7 +592,9 @@ function DownloadCard({
                   : 'Saved'}
             </p>
             <p className="muted">
-              <span className="path" title={download.path}>{shortPath(download.path ?? '', 60)}</span>
+              <span className="path" title={download.path}>
+                {shortPath(download.path ?? '', 60)}
+              </span>
               {download.failed
                 ? ` · ${download.failed} unavailable ${download.failed === 1 ? 'video' : 'videos'} skipped`
                 : ''}
@@ -634,7 +648,6 @@ function DownloadCard({
     </MediaCard>
   )
 }
-
 
 /**
  * Elide from the LEFT: `…/Artist - Album/01 - Track.mp4` — the album folder is
@@ -731,7 +744,8 @@ function ChoiceList({
           ))}
           {visibleVideo.length < video.length ? (
             <button type="button" className="more" onClick={onShowAllVideo}>
-              {video.length - visibleVideo.length} more {video.length - visibleVideo.length === 1 ? 'resolution' : 'resolutions'}
+              {video.length - visibleVideo.length} more{' '}
+              {video.length - visibleVideo.length === 1 ? 'resolution' : 'resolutions'}
             </button>
           ) : null}
         </fieldset>
@@ -752,13 +766,7 @@ function ChoiceRow({
   const checked = choice.index === selected
   return (
     <label className={`choice${checked ? ' checked' : ''}`}>
-      <input
-        type="radio"
-        name="format"
-        className="sr-only"
-        checked={checked}
-        onChange={() => onSelect(choice.index)}
-      />
+      <input type="radio" name="format" className="sr-only" checked={checked} onChange={() => onSelect(choice.index)} />
       <span className="radio" aria-hidden />
       <span className="choice-name">{choice.name}</span>
       <span className="choice-detail">{choice.detail}</span>
@@ -793,7 +801,9 @@ function DownloadProgress({
         : 'Merging audio and video…'
       : progress
         ? [
-            progress.total ? `${formatBytes(progress.downloaded)} of ${formatBytes(progress.total)}` : formatBytes(progress.downloaded),
+            progress.total
+              ? `${formatBytes(progress.downloaded)} of ${formatBytes(progress.total)}`
+              : formatBytes(progress.downloaded),
             progress.speed ? formatSpeed(progress.speed) : undefined,
             progress.eta ? `${formatEta(progress.eta)} left` : undefined,
           ]
@@ -835,7 +845,10 @@ function DownloadProgress({
       <p className="target">
         {destination ? (
           <>
-            <Folder /> <span className="path" title={destination}>{shortPath(destination, 60)}</span>
+            <Folder />{' '}
+            <span className="path" title={destination}>
+              {shortPath(destination, 60)}
+            </span>
           </>
         ) : null}
         {probe.kind === 'playlist' && state.saved > 0 ? <span className="muted"> · {state.saved} saved</span> : null}

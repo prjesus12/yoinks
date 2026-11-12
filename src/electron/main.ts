@@ -87,7 +87,11 @@ void app.whenReady().then(async () => {
       desktop: {
         canChooseFolder: true,
         revealLabel:
-          process.platform === 'darwin' ? 'Show in Finder' : process.platform === 'win32' ? 'Show in Explorer' : 'Open folder',
+          process.platform === 'darwin'
+            ? 'Show in Finder'
+            : process.platform === 'win32'
+              ? 'Show in Explorer'
+              : 'Open folder',
         chooseFolder: async current => {
           const options = {
             title: 'Save downloads to',

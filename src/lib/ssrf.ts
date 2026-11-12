@@ -94,7 +94,11 @@ function isPrivateIpv4(value: number): boolean {
 
 /** True for anything a public server must never fetch on a visitor's behalf. */
 export function isPrivateHost(hostname: string): boolean {
-  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
+  const host = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '')
   if (!host) return true
   if (host.includes(':')) return isPrivateIpv6(host)
   const v4 = parseIpv4(host)

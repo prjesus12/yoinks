@@ -110,7 +110,8 @@ export function parseArgs(args: string[]): CliArgs {
   if (positional.length > 1) return {...result, error: 'expected a single url'}
   result.initialUrl = positional[0]
 
-  const exposing = result.host !== undefined || result.password !== undefined || result.maxJobs !== undefined || result.allowPublic
+  const exposing =
+    result.host !== undefined || result.password !== undefined || result.maxJobs !== undefined || result.allowPublic
   if (exposing && !result.web) {
     return {...result, error: '--host, --password, --max-jobs and --allow-public only work with --web'}
   }

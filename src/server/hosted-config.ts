@@ -66,7 +66,8 @@ export function hostedConfigFromEnv(env: Record<string, string | undefined>): Ho
 
   const warnings: string[] = []
   if (!password) warnings.push('no password set: anyone who finds this server can download through it')
-  else if (password.length < MIN_PASSWORD) warnings.push(`that password is short — use at least ${MIN_PASSWORD} characters`)
+  else if (password.length < MIN_PASSWORD)
+    warnings.push(`that password is short — use at least ${MIN_PASSWORD} characters`)
 
   return {
     password,

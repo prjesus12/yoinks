@@ -2,11 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react'
 import {Box, Text} from 'ink'
 import {type Theme, useTheme} from '../theme.js'
 
-const ART = [
-  '▓ ▓ █▀█ ▀█▀ █▀▄█ █ █ █▀▀',
-  '▀█▀ █ ▓  ▓  █  ▓ ▓▀▄ ▀▀▓',
-  ' ▀  ▀▀▀ ▀▀▀ ▀  ▀ ▀ ▀ ▀▀▀',
-]
+const ART = ['▓ ▓ █▀█ ▀█▀ █▀▄█ █ █ █▀▀', '▀█▀ █ ▓  ▓  █  ▓ ▓▀▄ ▀▀▓', ' ▀  ▀▀▀ ▀▀▀ ▀  ▀ ▀ ▀ ▀▀▀']
 const GRID = ART.map(line => [...line])
 const ROWS = GRID.length
 
@@ -68,10 +64,7 @@ function renderRow(row: number, phase: Phase, t: number, delays: number[], theme
 export function Logo() {
   const theme = useTheme()
   const animated = Boolean(process.stdout.isTTY)
-  const delays = useMemo(
-    () => GRID.map(row => row.map(() => Math.random() * INTRO_SPREAD_MS)),
-    [],
-  )
+  const delays = useMemo(() => GRID.map(row => row.map(() => Math.random() * INTRO_SPREAD_MS)), [])
   const [phase, setPhase] = useState<Phase>(animated ? 'intro' : 'idle')
   const [t, setT] = useState(0)
 

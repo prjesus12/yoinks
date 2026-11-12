@@ -1,6 +1,14 @@
 import {useEffect, useRef, useState, type ReactNode} from 'react'
 import {isNewer} from '../../src/lib/version'
-import {checkForUpdates, removeCookies, setAutoUpdate, updateYtDlp, uploadCookies, type ComponentsView, type Settings} from './api'
+import {
+  checkForUpdates,
+  removeCookies,
+  setAutoUpdate,
+  updateYtDlp,
+  uploadCookies,
+  type ComponentsView,
+  type Settings,
+} from './api'
 import {Check, Folder, Refresh, Spinner, X} from './icons'
 
 // re-check GitHub when the panel opens, at most this often
@@ -142,10 +150,18 @@ export function SettingsDialog({
               <div className="row-text">
                 <p className="row-title">
                   cookies.txt{' '}
-                  {cookies?.set ? <span className="pill ok"><Check size={12} /> Active</span> : <span className="pill">Not set</span>}
+                  {cookies?.set ? (
+                    <span className="pill ok">
+                      <Check size={12} /> Active
+                    </span>
+                  ) : (
+                    <span className="pill">Not set</span>
+                  )}
                 </p>
                 <p className="row-sub">
-                  {cookies?.updatedAt ? `Uploaded ${new Date(cookies.updatedAt).toLocaleString()}` : 'Used when YouTube asks to confirm you’re not a bot.'}
+                  {cookies?.updatedAt
+                    ? `Uploaded ${new Date(cookies.updatedAt).toLocaleString()}`
+                    : 'Used when YouTube asks to confirm you’re not a bot.'}
                 </p>
               </div>
               <div className="row-actions">
@@ -156,19 +172,29 @@ export function SettingsDialog({
                   hidden
                   onChange={e => void onCookieFile(e.target.files?.[0])}
                 />
-                <button type="button" className="button small primary" onClick={() => fileRef.current?.click()} disabled={cookieBusy}>
+                <button
+                  type="button"
+                  className="button small primary"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={cookieBusy}
+                >
                   {cookieBusy ? <Spinner /> : null} {cookies?.set ? 'Replace' : 'Upload'}
                 </button>
                 {cookies?.set ? (
-                  <button type="button" className="button small" onClick={() => void onCookieRemove()} disabled={cookieBusy}>
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={() => void onCookieRemove()}
+                    disabled={cookieBusy}
+                  >
                     Remove
                   </button>
                 ) : null}
               </div>
             </div>
             <p className="section-note">
-              Export them in Netscape format from a private window signed in to a spare Google account (not your
-              main one). They’re stored on the server, readable only by it.
+              Export them in Netscape format from a private window signed in to a spare Google account (not your main
+              one). They’re stored on the server, readable only by it.
             </p>
             {cookieError ? (
               <p className="alert inline" role="alert">
@@ -178,103 +204,118 @@ export function SettingsDialog({
           </section>
         ) : null}
 
-        {hosted ? null : <section className="section">
-          <h3>Downloads</h3>
-          <div className="row">
-            <div className="row-text">
-              <p className="row-title">Save to</p>
-              <p className="row-sub path" title={settings?.outDir}>
-                {settings?.outDir ?? '~/Downloads'}
-              </p>
-            </div>
-            {settings?.canChooseFolder ? (
-              <button type="button" className="button small" onClick={onChooseFolder} disabled={choosing}>
-                <Folder /> {choosing ? 'Choosing…' : 'Change'}
-              </button>
-            ) : null}
-          </div>
-          <p className="section-note">Playlists get their own “Artist - Album” folder inside it.</p>
-        </section>}
-
-        {hosted ? null : <section className="section">
-          <h3>Components</h3>
-
-          <div className="row">
-            <div className="row-text">
-              <p className="row-title">
-                yt-dlp {status}
-              </p>
-              <p className="row-sub">
-                {yt?.version ? <span className="mono">{yt.version}</span> : yt?.busy ? 'Installing…' : 'Not installed'}
-                {yt?.version ? (yt.managed ? ' · yoinks’ own copy' : ' · installed on your system') : ''}
-              </p>
-            </div>
-            <div className="row-actions">
-              {hasUpdate || (yt && !yt.managed && yt.version) ? (
-                <button type="button" className="button small primary" onClick={() => void run('update')} disabled={busy}>
-                  {working === 'update' ? <Spinner /> : null}
-                  {hasUpdate ? 'Update' : 'Use yoinks’ copy'}
+        {hosted ? null : (
+          <section className="section">
+            <h3>Downloads</h3>
+            <div className="row">
+              <div className="row-text">
+                <p className="row-title">Save to</p>
+                <p className="row-sub path" title={settings?.outDir}>
+                  {settings?.outDir ?? '~/Downloads'}
+                </p>
+              </div>
+              {settings?.canChooseFolder ? (
+                <button type="button" className="button small" onClick={onChooseFolder} disabled={choosing}>
+                  <Folder /> {choosing ? 'Choosing…' : 'Change'}
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  className="button small"
-                  onClick={() => void run('check')}
-                  disabled={busy}
-                  aria-label="Check for updates"
-                >
-                  {working === 'check' ? <Spinner /> : <Refresh />} Check
-                </button>
-              )}
+              ) : null}
             </div>
-          </div>
-          {yt && !yt.managed && yt.version ? (
-            <p className="section-note">
-              This yt-dlp is updated by whatever installed it (pipx, Homebrew…). Switch to yoinks’ own copy of the
-              official release to update it from here — it also handles YouTube’s newest protections best.
-            </p>
-          ) : null}
+            <p className="section-note">Playlists get their own “Artist - Album” folder inside it.</p>
+          </section>
+        )}
 
-          <label className="row toggle-row">
-            <div className="row-text">
-              <p className="row-title">Update automatically</p>
-              <p className="row-sub">Checks once a day. YouTube changes often — staying current avoids failed downloads.</p>
-            </div>
-            <input
-              type="checkbox"
-              className="switch"
-              checked={components?.autoUpdate ?? true}
-              disabled={!components}
-              onChange={e => void toggleAuto(e.target.checked)}
-            />
-          </label>
+        {hosted ? null : (
+          <section className="section">
+            <h3>Components</h3>
 
-          <div className="row">
-            <div className="row-text">
-              <p className="row-title">ffmpeg</p>
-              <p className="row-sub">
-                {components?.ffmpeg.source === 'missing' ? (
-                  'Not found — mp3, m4a and high-resolution video need it'
+            <div className="row">
+              <div className="row-text">
+                <p className="row-title">yt-dlp {status}</p>
+                <p className="row-sub">
+                  {yt?.version ? (
+                    <span className="mono">{yt.version}</span>
+                  ) : yt?.busy ? (
+                    'Installing…'
+                  ) : (
+                    'Not installed'
+                  )}
+                  {yt?.version ? (yt.managed ? ' · yoinks’ own copy' : ' · installed on your system') : ''}
+                </p>
+              </div>
+              <div className="row-actions">
+                {hasUpdate || (yt && !yt.managed && yt.version) ? (
+                  <button
+                    type="button"
+                    className="button small primary"
+                    onClick={() => void run('update')}
+                    disabled={busy}
+                  >
+                    {working === 'update' ? <Spinner /> : null}
+                    {hasUpdate ? 'Update' : 'Use yoinks’ copy'}
+                  </button>
                 ) : (
-                  <>
-                    {components?.ffmpeg.version ? <span className="mono">{components.ffmpeg.version}</span> : null}
-                    {components?.ffmpeg.source === 'bundled'
-                      ? ' · bundled with yoinks, updated with the app'
-                      : components?.ffmpeg.source === 'system'
-                        ? ' · installed on your system'
-                        : ''}
-                  </>
+                  <button
+                    type="button"
+                    className="button small"
+                    onClick={() => void run('check')}
+                    disabled={busy}
+                    aria-label="Check for updates"
+                  >
+                    {working === 'check' ? <Spinner /> : <Refresh />} Check
+                  </button>
                 )}
-              </p>
+              </div>
             </div>
-          </div>
+            {yt && !yt.managed && yt.version ? (
+              <p className="section-note">
+                This yt-dlp is updated by whatever installed it (pipx, Homebrew…). Switch to yoinks’ own copy of the
+                official release to update it from here — it also handles YouTube’s newest protections best.
+              </p>
+            ) : null}
 
-          {error ? (
-            <p className="alert inline" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </section>}
+            <label className="row toggle-row">
+              <div className="row-text">
+                <p className="row-title">Update automatically</p>
+                <p className="row-sub">
+                  Checks once a day. YouTube changes often — staying current avoids failed downloads.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="switch"
+                checked={components?.autoUpdate ?? true}
+                disabled={!components}
+                onChange={e => void toggleAuto(e.target.checked)}
+              />
+            </label>
+
+            <div className="row">
+              <div className="row-text">
+                <p className="row-title">ffmpeg</p>
+                <p className="row-sub">
+                  {components?.ffmpeg.source === 'missing' ? (
+                    'Not found — mp3, m4a and high-resolution video need it'
+                  ) : (
+                    <>
+                      {components?.ffmpeg.version ? <span className="mono">{components.ffmpeg.version}</span> : null}
+                      {components?.ffmpeg.source === 'bundled'
+                        ? ' · bundled with yoinks, updated with the app'
+                        : components?.ffmpeg.source === 'system'
+                          ? ' · installed on your system'
+                          : ''}
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {error ? (
+              <p className="alert inline" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </section>
+        )}
 
         <p className="sheet-foot">yoinks {components?.appVersion ?? ''}</p>
       </div>

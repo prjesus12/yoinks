@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {albumTagArgs, buildChoices, cleanTitle, buildPlaylistChoices, playlistFolderName, presetChoiceIndex, TITLE_NOISE, type VideoInfo} from './ytdlp.js'
+import {
+  albumTagArgs,
+  buildChoices,
+  cleanTitle,
+  buildPlaylistChoices,
+  playlistFolderName,
+  presetChoiceIndex,
+  TITLE_NOISE,
+  type VideoInfo,
+} from './ytdlp.js'
 
 const playlist = (title: string, channels: string[], owner?: string): VideoInfo => ({
   _type: 'playlist',
@@ -10,7 +19,10 @@ const playlist = (title: string, channels: string[], owner?: string): VideoInfo 
 })
 
 test('names album folders "artist - album"', () => {
-  assert.equal(playlistFolderName(playlist('Beautiful Life', ['Rick Astley', 'Rick Astley'])), 'Rick Astley - Beautiful Life')
+  assert.equal(
+    playlistFolderName(playlist('Beautiful Life', ['Rick Astley', 'Rick Astley'])),
+    'Rick Astley - Beautiful Life',
+  )
 })
 
 test('strips YouTube Music decorations', () => {
@@ -43,7 +55,7 @@ test('tags tracks with literal album metadata', () => {
   assert.deepEqual(albumTagArgs({album: ''}), ['--parse-metadata', 'playlist_index:%(meta_track)s'])
 })
 
-test('strips video noise from titles but keeps the song\'s own version', () => {
+test("strips video noise from titles but keeps the song's own version", () => {
   // yt-dlp runs it in Python; minus the inline (?i) it's the same in JS
   const noise = new RegExp(TITLE_NOISE.replace('(?i)', ''), 'gi')
   const clean = (title: string) => title.replace(noise, '')
@@ -75,7 +87,10 @@ test('maps presets to their choice', () => {
 })
 
 test('predicts the cleaned title in JS', () => {
-  assert.equal(cleanTitle('Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)', 'Rick Astley'), 'Never Gonna Give You Up')
+  assert.equal(
+    cleanTitle('Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)', 'Rick Astley'),
+    'Never Gonna Give You Up',
+  )
   assert.equal(cleanTitle('AC/DC - Thunderstruck (Official Video)', 'ac/dc'), 'Thunderstruck')
   assert.equal(cleanTitle('Someone Else - Song', 'Rick Astley'), 'Someone Else - Song')
   assert.equal(cleanTitle('(Official Video)'), '(Official Video)')

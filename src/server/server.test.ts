@@ -173,37 +173,41 @@ test('POST /api/probe returns the choices the fake yt-dlp offers', {skip: posixO
   assert.match(await fs.readFile(fake.log, 'utf8'), /-J/)
 })
 
-test('a download replays its events, writes the file, and can be dropped once finished', {skip: posixOnly}, async () => {
-  const probe = json<ProbeView>(await post('/api/probe', {url: 'https://example.com/watch?v=canned'}))
-  const started = await post('/api/download', {probeId: probe.id, choice: 0})
-  assert.equal(started.status, 200)
-  const {jobId} = json<{jobId: string}>(started)
-  assert.ok(jobId)
+test(
+  'a download replays its events, writes the file, and can be dropped once finished',
+  {skip: posixOnly},
+  async () => {
+    const probe = json<ProbeView>(await post('/api/probe', {url: 'https://example.com/watch?v=canned'}))
+    const started = await post('/api/download', {probeId: probe.id, choice: 0})
+    assert.equal(started.status, 200)
+    const {jobId} = json<{jobId: string}>(started)
+    assert.ok(jobId)
 
-  const stream = await request(`/api/jobs/${jobId}/events`)
-  assert.equal(stream.status, 200)
-  assert.match(String(stream.headers['content-type']), /text\/event-stream/)
-  const seen = events(stream)
-  const last = seen.at(-1)
-  assert.equal(last?.type, 'done', `the stream ended with ${JSON.stringify(last)}`)
-  assert.equal(last?.type === 'done' && last.path.endsWith('video.mp4'), true)
-  // a subscriber that shows up after the job finished gets the replay, which
-  // must also end on the terminal event — never a stale progress tick
-  const replayed = events(await request(`/api/jobs/${jobId}/events`))
-  assert.equal(replayed.at(-1)?.type, 'done', `the replay ended with ${JSON.stringify(replayed.at(-1))}`)
-  assert.equal(
-    replayed.some(event => event.type === 'progress'),
-    false,
-    'a finished job must not replay progress ticks',
-  )
-  // the fake wrote its bytes where the server then looks for the result
-  assert.equal(await exists(fake.video), true)
+    const stream = await request(`/api/jobs/${jobId}/events`)
+    assert.equal(stream.status, 200)
+    assert.match(String(stream.headers['content-type']), /text\/event-stream/)
+    const seen = events(stream)
+    const last = seen.at(-1)
+    assert.equal(last?.type, 'done', `the stream ended with ${JSON.stringify(last)}`)
+    assert.equal(last?.type === 'done' && last.path.endsWith('video.mp4'), true)
+    // a subscriber that shows up after the job finished gets the replay, which
+    // must also end on the terminal event — never a stale progress tick
+    const replayed = events(await request(`/api/jobs/${jobId}/events`))
+    assert.equal(replayed.at(-1)?.type, 'done', `the replay ended with ${JSON.stringify(replayed.at(-1))}`)
+    assert.equal(
+      replayed.some(event => event.type === 'progress'),
+      false,
+      'a finished job must not replay progress ticks',
+    )
+    // the fake wrote its bytes where the server then looks for the result
+    assert.equal(await exists(fake.video), true)
 
-  // the job already finished, so this is the "already gone" path: dropping it
-  // is idempotent and its id stops resolving. A real cancel — one that aborts a
-  // running download and cleans up its partial files — lives in hosted.test.ts.
-  const dropped = await request(`/api/jobs/${jobId}`, {method: 'DELETE'})
-  assert.equal(dropped.status, 204)
-  assert.equal((await request(`/api/jobs/${jobId}`, {method: 'DELETE'})).status, 204)
-  assert.equal((await request(`/api/jobs/${jobId}/events`)).status, 404, 'a dropped job must stop resolving')
-})
+    // the job already finished, so this is the "already gone" path: dropping it
+    // is idempotent and its id stops resolving. A real cancel — one that aborts a
+    // running download and cleans up its partial files — lives in hosted.test.ts.
+    const dropped = await request(`/api/jobs/${jobId}`, {method: 'DELETE'})
+    assert.equal(dropped.status, 204)
+    assert.equal((await request(`/api/jobs/${jobId}`, {method: 'DELETE'})).status, 204)
+    assert.equal((await request(`/api/jobs/${jobId}/events`)).status, 404, 'a dropped job must stop resolving')
+  },
+)

@@ -36,3 +36,40 @@ test('the declared engine floor matches what the runtime dependencies need', () 
   assert.equal(Number.isFinite(floor), true, pkg.engines.node)
   assert.equal(floor! >= MIN_NODE, true, `engines says ${pkg.engines.node}, but ink 7 needs ${MIN_NODE}`)
 })
+
+test('ci and prepublish run the same formatting gate', () => {
+  const scripts = (JSON.parse(read('package.json')) as {scripts: Record<string, string>}).scripts
+  assert.match(scripts['format:check']!, /prettier --check \./, 'the gate must check the whole tree')
+  assert.match(read('.github/workflows/ci.yml'), /^\s*- run: npm run format:check$/m, 'ci no longer runs the gate')
+  assert.match(scripts.prepublishOnly!, /npm run format:check/, 'publishing must not ship an unformatted tree')
+})
+
+/**
+ * Every entry is deliberate: generated output, package-manager files, or trees
+ * another formatter owns. A new entry hides files from the gate, so it has to
+ * be a reviewed decision rather than a silent widening.
+ */
+const IGNORE_ALLOWLIST = new Set([
+  'dist',
+  'release',
+  'build',
+  'node_modules',
+  'package-lock.json',
+  '*.md',
+  'assets',
+  '.atl',
+  'expo',
+  '.codegraph',
+])
+
+test('prettier ignores only reviewed paths', () => {
+  const entries = read('.prettierignore')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line !== '' && !line.startsWith('#'))
+  assert.deepEqual(
+    entries.filter(entry => !IGNORE_ALLOWLIST.has(entry)),
+    [],
+    'a new .prettierignore entry blinds `npm run format:check` — justify it here first',
+  )
+})

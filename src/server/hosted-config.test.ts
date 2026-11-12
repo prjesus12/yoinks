@@ -16,7 +16,10 @@ test('accepts an explicit opt-out for a deliberately public server', () => {
   const config = hostedConfigFromEnv({YOINKS_ALLOW_PUBLIC: '1'})
   assert.equal(config.password, undefined)
   assert.equal(config.allowPublic, true)
-  assert.equal(config.warnings.some(warning => /no password/i.test(warning)), true)
+  assert.equal(
+    config.warnings.some(warning => /no password/i.test(warning)),
+    true,
+  )
 })
 
 test('defaults every limit when the environment is bare', () => {

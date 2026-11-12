@@ -99,7 +99,10 @@ test('wrapText breaks on words and keeps them whole', () => {
   assert.deepEqual(wrapText('one', 10), ['one'])
   assert.deepEqual(wrapText('', 10), [])
   // no line keeps a trailing space, which is what makes the block look centered
-  assert.equal(wrapText('aaaa bbb cc', 7).some(line => line.endsWith(' ')), false)
+  assert.equal(
+    wrapText('aaaa bbb cc', 7).some(line => line.endsWith(' ')),
+    false,
+  )
 })
 
 test('speed and eta stay quiet when there is nothing to say', () => {

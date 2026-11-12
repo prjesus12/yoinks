@@ -34,7 +34,9 @@ function openBrowser(url: string) {
       : process.platform === 'win32'
         ? ['cmd', ['/c', 'start', '', url]]
         : ['xdg-open', [url]]
-  spawn(cmd, args, {stdio: 'ignore', detached: true}).on('error', () => {}).unref()
+  spawn(cmd, args, {stdio: 'ignore', detached: true})
+    .on('error', () => {})
+    .unref()
 }
 
 /**
@@ -151,7 +153,7 @@ export async function startWebServer({
 
   // the preferred port may be taken (a second yoinks, another app) — walk up
   let bound = port
-  for (;; bound++) {
+  for (; ; bound++) {
     try {
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject)

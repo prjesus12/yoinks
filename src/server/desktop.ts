@@ -76,7 +76,9 @@ export function reveal(target: string, isFolder: boolean) {
       : process.platform === 'win32'
         ? ['explorer', [isFolder ? target : `/select,${target}`]]
         : ['xdg-open', [isFolder ? target : path.dirname(target)]]
-  spawn(cmd, args, {stdio: 'ignore', detached: true}).on('error', () => {}).unref()
+  spawn(cmd, args, {stdio: 'ignore', detached: true})
+    .on('error', () => {})
+    .unref()
 }
 
 export function revealLabel(): string {
