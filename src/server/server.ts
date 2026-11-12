@@ -81,6 +81,7 @@ export async function startWebServer({
   host,
   ytdlpPath,
   webDir: webDirOption,
+  template,
 }: {
   /** 0 picks any free port. */
   port?: number
@@ -97,12 +98,15 @@ export async function startWebServer({
   ytdlpPath?: string
   /** Serve the web app from here instead of the folder next to the bundle. */
   webDir?: string
+  /** yt-dlp output template for every download this server runs. */
+  template?: string
 } = {}): Promise<WebServer> {
   const state = createServerState()
   // per-server, not module-wide: closing one server must never make another
   // server's close() a silent no-op
   let closed = false
   if (webDirOption) state.webDir = asWebDir(webDirOption)
+  state.template = template
   state.hosted = hostedOptions ? resolveHosted(hostedOptions) : undefined
   if (state.hosted) {
     state.probeLimiter = createRateLimiter({limit: state.hosted.probeLimit, windowMs: MINUTE})

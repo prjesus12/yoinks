@@ -153,6 +153,8 @@ type AppProps = {
   /** Skip the picker and download this choice as soon as the link is read. */
   preset?: Preset
   outDir?: string
+  /** yt-dlp output template, from a flag or the config file. */
+  template?: string
   onOutcome: (outcome: Outcome) => void
 }
 
@@ -174,6 +176,7 @@ function AppContent({
   clipboardUrl,
   preset,
   outDir = DEFAULT_OUT_DIR,
+  template,
   onOutcome,
   cycleTheme,
 }: Omit<AppProps, 'initialThemeMode'> & {cycleTheme: () => void}) {
@@ -297,7 +300,7 @@ function AppContent({
       }
       try {
         const ffmpegLocation = await findFfmpeg()
-        const base = {ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir}
+        const base = {ytdlp: ytdlpRef.current, ffmpegLocation, url, choice, outDir, template}
         const result = await downloadWithFreshInfo({...base, infoJsonPath: infoJsonRef.current}, handlers, {
           signal: controller.signal,
           onRefresh: () =>

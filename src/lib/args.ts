@@ -1,4 +1,5 @@
 import {isThemeMode, type ThemeMode} from '../theme.js'
+import {TEMPLATE_NEEDS_EXT} from './config.js'
 
 export type Preset = 'mp3' | 'm4a' | 'best'
 
@@ -24,6 +25,10 @@ export type CliArgs = {
   maxJobs?: number
   /** Run the public mode with no password, on purpose. */
   allowPublic?: boolean
+  /** yt-dlp output template, overriding the config file and the default. */
+  template?: string
+  /** Read settings from here instead of ~/.config/yoinks/config.json. */
+  configPath?: string
   error?: string
 }
 
@@ -98,6 +103,20 @@ export function parseArgs(args: string[]): CliArgs {
         return {...result, error: '--max-jobs needs a whole number of downloads, like 3'}
       }
       result.maxJobs = jobs
+    } else if (arg === '--template' || arg.startsWith('--template=')) {
+      const value = arg === '--template' ? args[++index] : arg.slice('--template='.length)
+      if (!value) return {...result, error: '--template needs a yt-dlp output template, like "%(title)s.%(ext)s"'}
+      if (!value.includes(TEMPLATE_NEEDS_EXT)) {
+        return {
+          ...result,
+          error: `--template needs ${TEMPLATE_NEEDS_EXT} in it — otherwise the files land with no extension`,
+        }
+      }
+      result.template = value
+    } else if (arg === '--config' || arg.startsWith('--config=')) {
+      const value = arg === '--config' ? args[++index] : arg.slice('--config='.length)
+      if (!value) return {...result, error: '--config needs a path'}
+      result.configPath = value
     } else if (arg === '--allow-public') {
       result.allowPublic = true
     } else if (arg.startsWith('-')) {

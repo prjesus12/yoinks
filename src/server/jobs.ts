@@ -50,7 +50,14 @@ export async function runJob(state: ServerState, job: Job, probe: Probe, choice:
     const ffmpegLocation = await findFfmpeg()
     const target = job.dir ?? state.outDir
     await fs.mkdir(target, {recursive: true})
-    const base = {ytdlp: await getYtDlp(state), ffmpegLocation, url: probe.url, choice, outDir: target}
+    const base = {
+      ytdlp: await getYtDlp(state),
+      ffmpegLocation,
+      url: probe.url,
+      choice,
+      outDir: target,
+      template: state.template,
+    }
     const result = await downloadWithFreshInfo(
       {...base, infoJsonPath: probe.infoJsonPath},
       handlers,

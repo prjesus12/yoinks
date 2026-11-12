@@ -598,9 +598,16 @@ export type DownloadOptions = {
   infoJsonPath?: string
   choice: DownloadChoice
   outDir: string
+  /** yt-dlp's output template. Replaces the default name layout entirely, so a
+   *  playlist template is the caller's business. */
+  template?: string
   /** Override the stall guard (tests, or a caller that knows better). */
   idleTimeoutMs?: number
 }
+
+/** The name layout when nobody asked for one. */
+export const DEFAULT_TEMPLATE = '%(title).60s.%(ext)s'
+export const DEFAULT_PLAYLIST_TEMPLATE = '%(playlist_index)02d - %(title).60s.%(ext)s'
 
 export function download(
   opts: DownloadOptions,
@@ -634,9 +641,9 @@ export function download(
         path.join(
           opts.outDir.replaceAll('%', '%%'),
           playlistFolder.replaceAll('%', '%%'),
-          '%(playlist_index)02d - %(title).60s.%(ext)s',
+          opts.template ?? DEFAULT_PLAYLIST_TEMPLATE,
         )
-      : path.join(opts.outDir, '%(title).60s.%(ext)s'),
+      : path.join(opts.outDir, opts.template ?? DEFAULT_TEMPLATE),
   ]
   if (opts.ffmpegLocation) args.push('--ffmpeg-location', opts.ffmpegLocation)
 

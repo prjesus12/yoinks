@@ -6,6 +6,7 @@ import {render} from 'ink'
 import {App, type Outcome} from './app.js'
 import {captureFrames} from './lib/click-map.js'
 import {parseArgs} from './lib/args.js'
+import {loadConfig, resolveOptions, type Config} from './lib/config.js'
 import {readClipboard} from './lib/clipboard.js'
 import {isProbablyUrl} from './lib/platforms.js'
 
@@ -39,6 +40,8 @@ const HELP = `
                     mode, where files go to the browser instead of ~/Downloads
     --max-jobs <n>  --web: downloads at once in that mode (default 3)
     --allow-public  --web: expose it with no password, on purpose
+    --template <t>  name downloads with a yt-dlp template (needs %(ext)s)
+    --config <path> read settings from here instead of ~/.config/yoinks
     --theme <mode>  use auto, light, or dark for this run
     -h, --help      show this help
     -v, --version   show version
@@ -67,7 +70,23 @@ if (args.version) {
 }
 
 const expandHome = (dir: string) => (dir === '~' || dir.startsWith('~/') ? path.join(os.homedir(), dir.slice(1)) : dir)
-const outDir = args.outDir ? path.resolve(expandHome(args.outDir)) : undefined
+
+// a broken config file is worth stopping for: it names the problem
+let config: Config
+try {
+  config = args.configPath
+    ? await loadConfig(path.resolve(expandHome(args.configPath)), {mustExist: true})
+    : await loadConfig()
+} catch (error) {
+  console.error(`yoinks: ${error instanceof Error ? error.message : String(error)}`)
+  process.exit(1)
+}
+// flags win over the config file, the config file over the defaults
+const options = resolveOptions(
+  {outDir: args.outDir, template: args.template, themeMode: args.themeMode, preset: args.preset},
+  config,
+)
+const outDir = options.outDir ? path.resolve(expandHome(options.outDir)) : undefined
 
 if (args.web) {
   // lazy: the terminal UI shouldn't pay for loading the server
@@ -85,6 +104,7 @@ if (args.web) {
     // the hosted server defaults to every interface, which is right for
     // `node dist/server.js` and wrong for a flag the help calls loopback
     host: args.host ?? '127.0.0.1',
+    template: options.template,
     hosted: publicMode ? hostedOptionsFromFlags({password: args.password, maxJobs: args.maxJobs}) : undefined,
   })
   console.log(
@@ -96,7 +116,7 @@ if (args.web) {
 }
 
 const initialUrl = args.initialUrl
-const initialThemeMode = args.themeMode ?? 'auto'
+const initialThemeMode = options.themeMode
 
 const isTTY = Boolean(process.stdout.isTTY)
 
@@ -132,8 +152,9 @@ const {waitUntilExit} = render(
     initialUrl={initialUrl}
     clipboardUrl={clipboardUrl}
     initialThemeMode={initialThemeMode}
-    preset={args.preset}
+    preset={options.preset}
     outDir={outDir}
+    template={options.template}
     onOutcome={result => (outcome = result)}
   />,
   // keep a copy of every frame so clicks can be hit-tested against it

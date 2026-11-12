@@ -80,6 +80,26 @@ click the theme control in the footer to cycle through `auto`, `light`, and
 
 <img src="assets/download-options.png" alt="yoinks format picker — resolutions with estimated file sizes, plus audio-only mp3" width="100%">
 
+## Settings
+
+Anything you would otherwise type on every run can live in
+`~/.config/yoinks/config.json`:
+
+```json
+{
+  "outDir": "~/Music",
+  "template": "%(artist)s/%(album)s/%(track)02d - %(title)s.%(ext)s",
+  "theme": "dark",
+  "preset": "mp3"
+}
+```
+
+`template` is yt-dlp's own output template, so any field yt-dlp knows works.
+It has to contain `%(ext)s`, or the files land with no extension at all.
+Flags win over the file and the file wins over the defaults; `--config <path>`
+reads a different file, and a key yoinks doesn't recognise is an error rather
+than a silent no-op.
+
 ## Desktop app
 
 yoinks also comes as an app for macOS, Windows and Linux — the same screen

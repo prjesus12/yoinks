@@ -111,6 +111,8 @@ export type ServerState = {
   jobs: Map<string, Job>
   /** Where downloads land — like the terminal UI, straight onto disk. */
   outDir: string
+  /** The yt-dlp output template, when one was configured. */
+  template?: string
   /** Public-hosting mode: files go to the visitor's browser, not to this disk. */
   hosted?: ResolvedHosted
   osHooks: Desktop

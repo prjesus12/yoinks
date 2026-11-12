@@ -163,3 +163,16 @@ test('--max-jobs without the public mode is refused, not silently ignored', () =
   assert.match(parseArgs(['--web', '--max-jobs', '2']).error ?? '', /--max-jobs only applies/)
   assert.equal(parseArgs(['--web', '--max-jobs', '2', '--password', 'hunter2hunter2']).error, undefined)
 })
+
+test('parses the template and a config path', () => {
+  assert.equal(parseArgs(['--template', '%(title)s.%(ext)s']).template, '%(title)s.%(ext)s')
+  assert.equal(parseArgs(['--template=%(title)s.%(ext)s']).template, '%(title)s.%(ext)s')
+  assert.equal(parseArgs(['--config', '/tmp/yoinks.json']).configPath, '/tmp/yoinks.json')
+  assert.match(parseArgs(['--template']).error ?? '', /--template needs/)
+  assert.match(parseArgs(['--config']).error ?? '', /--config needs/)
+})
+
+test('a template without %(ext)s is refused at the flag too', () => {
+  // yt-dlp would write files with no extension at all
+  assert.match(parseArgs(['--template', '%(title)s']).error ?? '', /%\(ext\)s/)
+})

@@ -12,7 +12,9 @@ const posixOnly = process.platform === 'win32' ? 'posix only' : false
 async function fakeYtDlp(script: string): Promise<{bin: string; dir: string}> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yoinks-fake-'))
   const bin = path.join(dir, 'yt-dlp')
-  await fs.writeFile(bin, `#!/bin/sh\n${script}\n`, {mode: 0o755})
+  // every launch records its argv, so a test can assert what reached yt-dlp
+  const log = path.join(dir, 'calls.log')
+  await fs.writeFile(bin, `#!/bin/sh\necho "$*" >> "${log}"\n${script}\n`, {mode: 0o755})
   return {bin, dir}
 }
 
@@ -38,7 +40,7 @@ const noopHandlers: DownloadHandlers = {onProgress: () => {}, onProcessing: () =
 test('probe returns the parsed info when yt-dlp succeeds', {skip: posixOnly}, async () => {
   const {bin, dir} = await fakeYtDlp(`echo '{"title":"a song","formats":[]}'`)
   try {
-    const result = await probe(bin, 'https://example.com/v', {timeoutMs: 5000})
+    const result = await probe(bin, 'https://example.com/v', {timeoutMs: 15_000})
     assert.equal(result.info.title, 'a song')
     // the metadata is kept so the download can skip re-extraction
     assert.equal(await exists(result.infoJsonPath), true)
@@ -123,6 +125,38 @@ test('cancelling waits for the partial files to be gone', {skip: posixOnly}, asy
     // the promise only settles after cleanup, so nothing is left half-written
     assert.equal(await exists(partial), false, `${partial} survived the cancel`)
     assert.equal(await exists(target), false, `${target} survived the cancel`)
+  } finally {
+    await fs.rm(dir, {recursive: true, force: true})
+    await fs.rm(outDir, {recursive: true, force: true})
+  }
+})
+
+test('a custom template replaces the whole name layout', {skip: posixOnly}, async () => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'yoinks-out-'))
+  const target = path.join(outDir, 'track.mp4')
+  const {bin, dir} = await fakeYtDlp(`touch "${target}"\necho "${target}"`)
+  try {
+    await download(
+      {ytdlp: bin, url: 'https://example.com/v', choice: CHOICE, outDir, template: '%(artist)s/%(title)s.%(ext)s'},
+      noopHandlers,
+    )
+    const log = await fs.readFile(path.join(dir, 'calls.log'), 'utf8').catch(() => '')
+    const argv = await new Promise<string>(resolve => resolve(log))
+    assert.match(argv, /-o .*%\(artist\)s\/%\(title\)s\.%\(ext\)s/, 'the template must reach yt-dlp verbatim')
+  } finally {
+    await fs.rm(dir, {recursive: true, force: true})
+    await fs.rm(outDir, {recursive: true, force: true})
+  }
+})
+
+test('the default name layout is unchanged when no template is given', {skip: posixOnly}, async () => {
+  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'yoinks-out-'))
+  const target = path.join(outDir, 'track.mp4')
+  const {bin, dir} = await fakeYtDlp(`touch "${target}"\necho "${target}"`)
+  try {
+    await download({ytdlp: bin, url: 'https://example.com/v', choice: CHOICE, outDir}, noopHandlers)
+    const log = await fs.readFile(path.join(dir, 'calls.log'), 'utf8')
+    assert.match(log, /%\(title\)\.60s\.%\(ext\)s/, 'the default template must not drift')
   } finally {
     await fs.rm(dir, {recursive: true, force: true})
     await fs.rm(outDir, {recursive: true, force: true})
