@@ -185,7 +185,10 @@ export async function startWebServer({
   process.once('SIGINT', onSignal)
   process.once('SIGTERM', onSignal)
 
-  const url = `http://localhost:${bound}`
+  // `localhost` resolves to 127.0.0.1, which is not where an IPv6 loopback bind
+  // is listening — print something that actually reaches it
+  const displayHost = host === '::1' || host === '0:0:0:0:0:0:0:1' ? '[::1]' : 'localhost'
+  const url = `http://${displayHost}:${bound}`
   if (open) openBrowser(url)
   return {url, close, activeDownloads: () => jobsRunning(state)}
 }

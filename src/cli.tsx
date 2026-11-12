@@ -33,6 +33,12 @@ const HELP = `
     -o, --out <dir> save here instead of ~/Downloads
     --web           open yoinks in your browser instead (runs locally)
     --port <n>      port for --web (default 4455)
+    --host <addr>   --web: listen here (default 127.0.0.1). Anything but
+                    loopback needs --password
+    --password <pw> --web: require this password. Also switches to the public
+                    mode, where files go to the browser instead of ~/Downloads
+    --max-jobs <n>  --web: downloads at once in that mode (default 3)
+    --allow-public  --web: expose it with no password, on purpose
     --theme <mode>  use auto, light, or dark for this run
     -h, --help      show this help
     -v, --version   show version
@@ -66,8 +72,25 @@ const outDir = args.outDir ? path.resolve(expandHome(args.outDir)) : undefined
 if (args.web) {
   // lazy: the terminal UI shouldn't pay for loading the server
   const {startWebServer} = await import('./server/server.js')
-  const {url} = await startWebServer({port: args.port, open: !args.noOpen, outDir})
-  console.log(`yoinks web → ${url}\n\nRunning on this computer only. Press ^c to stop.`)
+  const {hostedOptionsFromFlags} = await import('./server/hosted-config.js')
+  // --password or --allow-public means the public mode: files go to the browser
+  const publicMode = Boolean(args.password || args.allowPublic)
+  if (args.password && args.password.length < 8) {
+    console.error('! that password is short — use at least 8 characters')
+  }
+  const {url} = await startWebServer({
+    port: args.port,
+    open: !args.noOpen,
+    outDir,
+    // the hosted server defaults to every interface, which is right for
+    // `node dist/server.js` and wrong for a flag the help calls loopback
+    host: args.host ?? '127.0.0.1',
+    hosted: publicMode ? hostedOptionsFromFlags({password: args.password, maxJobs: args.maxJobs}) : undefined,
+  })
+  console.log(
+    `yoinks web → ${url}${publicMode ? (args.password ? ' · password protected' : ' · NO PASSWORD SET') : ''}\n\n` +
+      (publicMode ? 'Serving your network. Press ^c to stop.' : 'Running on this computer only. Press ^c to stop.'),
+  )
   // keep serving until ^c
   await new Promise(() => {})
 }

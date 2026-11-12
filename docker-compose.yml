@@ -1,0 +1,21 @@
+# docker compose up --build
+#
+# Fails closed: without YOINKS_PASSWORD in the environment or a .env file, the
+# container refuses to start rather than run an open downloader.
+services:
+  yoinks:
+    build: .
+    ports:
+      - '8080:8080'
+    environment:
+      YOINKS_PASSWORD: ${YOINKS_PASSWORD:?set YOINKS_PASSWORD — an open downloader gets abused fast}
+      YOINKS_MAX_JOBS: ${YOINKS_MAX_JOBS:-3}
+      YOINKS_FILE_TTL: ${YOINKS_FILE_TTL:-15}
+      YOINKS_MAX_PLAYLIST: ${YOINKS_MAX_PLAYLIST:-50}
+    volumes:
+      # cookies.txt and settings survive a rebuild
+      - yoinks-state:/home/node/.config/yoinks
+    restart: unless-stopped
+
+volumes:
+  yoinks-state:

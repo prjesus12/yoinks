@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {hostedConfigFromEnv} from './hosted-config.js'
+import {hostedConfigFromEnv, hostedOptionsFromFlags} from './hosted-config.js'
 
 const PASSWORD = 'a-long-enough-password'
 
@@ -64,4 +64,16 @@ test('passes the optional files through untouched', () => {
   })
   assert.equal(config.cookiesFile, '/srv/yoinks/cookies.txt')
   assert.equal(config.proxy, 'http://user:pass@host:1080')
+})
+
+test('the flags path keeps the same defaults as the environment path', () => {
+  const options = hostedOptionsFromFlags({password: 'a-long-enough-password'})
+  assert.equal(options.maxJobs, 3)
+  assert.equal(options.fileTtlMs, 15 * 60 * 1000)
+  assert.equal(options.maxPlaylist, 50)
+  assert.equal(options.probeLimit, 12)
+  assert.equal(options.downloadLimit, 6)
+  assert.equal(options.maxProbes, 4)
+  // a flag path never trusts a proxy header it cannot see
+  assert.equal(options.trustProxy, false)
 })

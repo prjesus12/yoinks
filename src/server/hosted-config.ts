@@ -35,6 +35,34 @@ const flag = (value: string | undefined): boolean => value === '1' || value?.toL
 
 const MIN_PASSWORD = 8
 
+/** The defaults the hosted entry and the `--web` flags both start from. */
+const DEFAULTS = {
+  port: 4455,
+  maxJobs: 3,
+  fileTtlMs: 15 * 60 * 1000,
+  maxPlaylist: 50,
+  probeLimit: 12,
+  downloadLimit: 6,
+  maxProbes: 4,
+} as const
+
+/**
+ * The same policy for `yoinks --web --password`, where the only knobs are the
+ * two flags. `--host` decides the bind address, which the caller passes on.
+ */
+export function hostedOptionsFromFlags({password, maxJobs}: {password?: string; maxJobs?: number}) {
+  return {
+    password,
+    maxJobs: maxJobs ?? DEFAULTS.maxJobs,
+    fileTtlMs: DEFAULTS.fileTtlMs,
+    maxPlaylist: DEFAULTS.maxPlaylist,
+    probeLimit: DEFAULTS.probeLimit,
+    downloadLimit: DEFAULTS.downloadLimit,
+    maxProbes: DEFAULTS.maxProbes,
+    trustProxy: false,
+  }
+}
+
 export function hostedConfigFromEnv(env: Record<string, string | undefined>): HostedConfig {
   const password = env.YOINKS_PASSWORD?.trim() || undefined
   const allowPublic = flag(env.YOINKS_ALLOW_PUBLIC)
@@ -52,13 +80,13 @@ export function hostedConfigFromEnv(env: Record<string, string | undefined>): Ho
   return {
     password,
     allowPublic,
-    port: positiveInt(env.PORT, 4455),
-    maxJobs: positiveInt(env.YOINKS_MAX_JOBS, 3),
-    fileTtlMs: positiveInt(env.YOINKS_FILE_TTL, 15) * 60 * 1000,
-    maxPlaylist: positiveInt(env.YOINKS_MAX_PLAYLIST, 50),
-    probeLimit: positiveInt(env.YOINKS_PROBE_LIMIT, 12),
-    downloadLimit: positiveInt(env.YOINKS_DOWNLOAD_LIMIT, 6),
-    maxProbes: positiveInt(env.YOINKS_MAX_PROBES, 4),
+    port: positiveInt(env.PORT, DEFAULTS.port),
+    maxJobs: positiveInt(env.YOINKS_MAX_JOBS, DEFAULTS.maxJobs),
+    fileTtlMs: positiveInt(env.YOINKS_FILE_TTL, DEFAULTS.fileTtlMs / 60_000) * 60_000,
+    maxPlaylist: positiveInt(env.YOINKS_MAX_PLAYLIST, DEFAULTS.maxPlaylist),
+    probeLimit: positiveInt(env.YOINKS_PROBE_LIMIT, DEFAULTS.probeLimit),
+    downloadLimit: positiveInt(env.YOINKS_DOWNLOAD_LIMIT, DEFAULTS.downloadLimit),
+    maxProbes: positiveInt(env.YOINKS_MAX_PROBES, DEFAULTS.maxProbes),
     trustProxy: flag(env.YOINKS_TRUST_PROXY),
     cookiesFile: env.YOINKS_COOKIES || undefined,
     proxy: env.YOINKS_PROXY || undefined,

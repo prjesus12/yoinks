@@ -1,0 +1,14 @@
+.git
+.github
+.atl
+node_modules
+dist
+release
+build
+assets
+expo
+design
+odd
+*.md
+*.log
+.DS_Store

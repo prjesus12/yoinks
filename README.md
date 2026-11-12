@@ -38,6 +38,8 @@ $ yoinks --theme light                   # force the light palette
 $ yoinks --mp3 <playlist-url>            # every track as mp3, no questions
 $ yoinks --m4a -o ~/Music <url>          # m4a, saved to ~/Music
 $ yoinks --best <url>                    # highest-resolution mp4
+$ yoinks --web                           # same thing in a browser, locally
+$ yoinks --web --host 0.0.0.0 --password …   # share it on your network
 ```
 
 With a url plus `--mp3`, `--m4a` or `--best`, yoinks skips the format
@@ -119,6 +121,18 @@ The server only listens on `127.0.0.1` and refuses requests from other
 websites, so nothing outside your own browser can drive it. `--port`
 picks another port; `--no-open` skips opening the browser.
 
+To reach it from another machine, bind wider and set a password:
+
+```sh
+$ yoinks --web --host 0.0.0.0 --password choose-one --max-jobs 3
+```
+
+Anything but a loopback `--host` **requires** `--password` (`--allow-public`
+skips it on purpose). Setting a password also switches to the public mode
+the hosted server uses: files go to the browser instead of `~/Downloads`,
+requests are rate limited per visitor, and links pointing at private or
+local addresses are refused.
+
 ## Host it online
 
 yoinks also runs as a public website. It needs a real server (it runs
@@ -128,6 +142,10 @@ work — use anything that runs Docker or Node: Railway, Render, Fly.io, a VPS.
 ```sh
 docker build -t yoinks .
 docker run -p 8080:8080 -e YOINKS_PASSWORD=choose-one yoinks
+
+# or, with the password kept out of your shell history
+echo 'YOINKS_PASSWORD=choose-one' > .env
+docker compose up --build
 ```
 
 Or without Docker (Node 18+ and ffmpeg installed): `npm run build && npm run start:hosted`.
