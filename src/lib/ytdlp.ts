@@ -513,8 +513,19 @@ export type DownloadResult = {
 const PROGRESS_PREFIX = 'YOINK|'
 const PROGRESS_TEMPLATE = `${PROGRESS_PREFIX}%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s`
 
-let activeChild: ChildProcess | undefined
-process.on('exit', () => activeChild?.kill('SIGTERM'))
+/**
+ * Faster downloads: fetch up to this many fragments of a DASH/HLS stream at
+ * once (YouTube, X, Instagram, TikTok all serve fragmented formats). Plain
+ * single-file formats are unaffected.
+ */
+export const CONCURRENT_FRAGMENTS = 8
+export const SPEED_ARGS = ['--concurrent-fragments', String(CONCURRENT_FRAGMENTS)]
+
+// several downloads can run at once — every one of them dies with yoinks
+const activeChildren = new Set<ChildProcess>()
+process.on('exit', () => {
+  for (const child of activeChildren) child.kill('SIGTERM')
+})
 
 export function download(
   opts: {
@@ -534,6 +545,7 @@ export function download(
   const args = [
     ...(opts.infoJsonPath && !playlist ? ['--load-info-json', opts.infoJsonPath] : [opts.url]),
     ...opts.choice.args,
+    ...SPEED_ARGS,
     ...CHALLENGE_ARGS,
     ...EXTRA_ARGS,
     // one unavailable video shouldn't sink the whole playlist
@@ -559,7 +571,7 @@ export function download(
 
   return new Promise((resolve, reject) => {
     const child = spawn(opts.ytdlp, args, {signal, env: childEnv})
-    activeChild = child
+    activeChildren.add(child)
 
     let stderr = ''
     const filepaths: string[] = []
@@ -624,7 +636,7 @@ export function download(
     child.stderr.on('data', chunk => (stderr += chunk))
     child.on('error', reject)
     child.on('close', code => {
-      activeChild = undefined
+      activeChildren.delete(child)
       if (signal?.aborted) {
         // cancelled on purpose — don't leave half-written files behind
         void removePartials(destinations)

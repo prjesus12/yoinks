@@ -1161,7 +1161,8 @@ html[data-shell] .main {
   color: var(--muted);
 }
 
-.alert button.link {
+.alert button.link,
+.downloads-head button.link {
   padding: 0;
   border: 0;
   background: none;
@@ -1170,4 +1171,37 @@ html[data-shell] .main {
   font-weight: 600;
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* downloads list ------------------------------------------------------- */
+
+.downloads {
+  margin-top: 40px;
+}
+
+.downloads-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.downloads-head h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.downloads-head .muted {
+  font-size: 13px;
+}
+
+.downloads .card {
+  margin-top: 12px;
+}
+
+.downloads .progress-label.path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
